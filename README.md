@@ -8,13 +8,13 @@ App web para organizar bolões de futebol compartilháveis por código, com jogo
 npm install
 cp .env.example .env
 # edite .env e coloque o token do football-data.org
-# para compartilhamento real entre usuarios, configure tambem SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY
+# para compartilhamento real entre usuarios, configure tambem SUPABASE_URL e SUPABASE_SECRET_KEY
 npm run dev
 ```
 
 Abra `http://127.0.0.1:5173/`.
 
-Sem `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`, o servidor guarda os bolões apenas em memória enquanto estiver aberto. Para compartilhar bolões entre pessoas de verdade, configure o Supabase.
+Sem `SUPABASE_URL` e uma chave server-side do Supabase, o servidor guarda os bolões apenas em memória enquanto estiver aberto. Para compartilhar bolões entre pessoas de verdade, configure o Supabase.
 
 ## Integrações reais
 
@@ -47,13 +47,21 @@ git push -u origin main
 
 1. Crie ou selecione um projeto no Supabase.
 2. Abra o SQL Editor e rode o arquivo `supabase/schema.sql`.
-3. Em Project Settings > API, copie a Project URL e a service role key.
-4. Configure no `.env` local e, depois, no provedor de hospedagem:
+3. Confirme que as tabelas `bolao_pools` e `bolao_participants` aparecem em Table Editor.
+4. Em Project Settings > API Keys, copie:
+   - Project URL
+   - Secret key (`sb_secret_...`) ou, se estiver usando chaves legadas, `service_role`
+5. Se seu projeto novo nao expuser tabelas public automaticamente pela Data API, abra Data API settings e inclua o schema `public`.
+6. Configure no `.env` local e, depois, no provedor de hospedagem:
 
 ```bash
 SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
+SUPABASE_SECRET_KEY=sua_sb_secret_key
+# ou, com chave legada:
+# SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
 ```
+
+Depois de salvar o `.env`, reinicie o servidor local. A rota `GET /api/health` deve retornar `hasSupabase: true`.
 
 ### Vercel
 
@@ -64,7 +72,7 @@ Variáveis necessárias no projeto Vercel:
 ```bash
 FOOTBALL_DATA_TOKEN=...
 SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_SECRET_KEY=...
 ```
 
 ## Observacoes

@@ -166,12 +166,16 @@ function publicParticipant(participant) {
 }
 
 function isSupabaseConfigured() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(process.env.SUPABASE_URL && getSupabaseServerKey());
+}
+
+function getSupabaseServerKey() {
+  return process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 }
 
 async function supabaseRest(path, options = {}) {
   const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = getSupabaseServerKey();
 
   if (!supabaseUrl || !serviceRoleKey) {
     const error = new Error("Supabase nao configurado.");
