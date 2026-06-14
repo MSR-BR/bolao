@@ -1,0 +1,1173 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
+import {
+  BarChart3,
+  Check,
+  Copy,
+  CreditCard,
+  Lock,
+  Plus,
+  QrCode,
+  RefreshCw,
+  Send,
+  Timer,
+  Trophy,
+  Users,
+  X,
+} from "lucide-react";
+import { fetchImportantMatches, fetchMatchStatus, formatKickoff } from "./footballApi";
+import {
+  addSharedParticipant,
+  createSharedPool,
+  deleteSharedParticipant,
+  fetchSharedPool,
+  normalizePoolCode,
+  updateSharedParticipant,
+  updateSharedPool,
+} from "./poolApi";
+import { buildPixPayload, formatCurrency } from "./pix";
+
+const BRAZIL = { code: "BR", name: "Brasil" };
+const SEARCH_WINDOWS = [
+  { days: 1, label: "1 dia" },
+  { days: 3, label: "3 dias" },
+  { days: 7, label: "7 dias" },
+];
+
+function scoreKey(homeGoals, awayGoals) {
+  return `${homeGoals} x ${awayGoals}`;
+}
+
+function formatSearchDaysLabel(days) {
+  return days === 1 ? "1 dia" : `${days} dias`;
+}
+
+function formatSearchDaysScope(days) {
+  return days === 1 ? "o próximo 1 dia" : `os próximos ${days} dias`;
+}
+
+function formatSearchDaysNotice(days) {
+  return days === 1 ? "no próximo 1 dia" : `nos próximos ${days} dias`;
+}
+
+function adminStorageKey(code) {
+  return `bolao-facil-admin-${normalizePoolCode(code)}`;
+}
+
+function makePoolLink(code, adminToken = "") {
+  if (!code) return "";
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("bolao", normalizePoolCode(code));
+  if (adminToken) url.searchParams.set("admin", adminToken);
+  return url.toString();
+}
+
+function makeBetDescription(match, participant) {
+  if (!match || !participant) return "Bolao de futebol";
+  return `${participant.name}: ${match.home} ${participant.homeGoals}x${participant.awayGoals} ${match.away}`;
+}
+
+function dataUrlToFile(dataUrl, filename) {
+  const [header, content] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);base64/)?.[1] || "image/png";
+  const binary = window.atob(content);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], filename, { type: mime });
+}
+
+function useNow() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return now;
+}
+
+function App() {
+  const now = useNow();
+  const [poolCode, setPoolCode] = useState("");
+  const [entryCode, setEntryCode] = useState("");
+  const [adminToken, setAdminToken] = useState("");
+  const [isCoordinator, setIsCoordinator] = useState(false);
+  const [poolLoading, setPoolLoading] = useState(false);
+  const [poolError, setPoolError] = useState("");
+  const [poolNotice, setPoolNotice] = useState("");
+  const [shareCopied, setShareCopied] = useState("");
+  const [initialPoolChecked, setInitialPoolChecked] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [matches, setMatches] = useState([]);
+  const [matchesLoading, setMatchesLoading] = useState(false);
+  const [matchesError, setMatchesError] = useState("");
+  const [matchesNotice, setMatchesNotice] = useState("");
+  const [matchSource, setMatchSource] = useState("");
+  const [searchDays, setSearchDays] = useState(7);
+  const [selectedMatchId, setSelectedMatchId] = useState("");
+  const [selectedMatchData, setSelectedMatchData] = useState(null);
+  const [participants, setParticipants] = useState([]);
+  const [form, setForm] = useState({ name: "", homeGoals: 1, awayGoals: 0 });
+  const [betValue, setBetValue] = useState(20);
+  const [pixKey, setPixKey] = useState("");
+  const [merchantName, setMerchantName] = useState("");
+  const [selectedParticipantId, setSelectedParticipantId] = useState("");
+  const [pixPayload, setPixPayload] = useState("");
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [pixSendStatus, setPixSendStatus] = useState("");
+  const [betsClosed, setBetsClosed] = useState(false);
+  const [liveMatch, setLiveMatch] = useState(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState("");
+  const [tracking, setTracking] = useState(false);
+
+  const selectedMatch = useMemo(
+    () => selectedMatchData || matches.find((match) => match.id === selectedMatchId) || null,
+    [matches, selectedMatchData, selectedMatchId],
+  );
+
+  const selectedParticipant = useMemo(
+    () => participants.find((participant) => participant.id === selectedParticipantId) || participants[0],
+    [participants, selectedParticipantId],
+  );
+
+  const histogram = useMemo(() => {
+    const counts = participants.reduce((accumulator, participant) => {
+      const key = scoreKey(participant.homeGoals, participant.awayGoals);
+      accumulator[key] = (accumulator[key] || 0) + 1;
+      return accumulator;
+    }, {});
+
+    return Object.entries(counts)
+      .map(([score, count]) => ({ score, count }))
+      .sort((a, b) => b.count - a.count || a.score.localeCompare(b.score));
+  }, [participants]);
+
+  const totalPool = useMemo(() => Number(betValue || 0) * participants.length, [betValue, participants.length]);
+  const maxHistogramCount = Math.max(...histogram.map((item) => item.count), 1);
+  const currentLive = liveMatch || selectedMatch || {
+    homeGoals: 0,
+    awayGoals: 0,
+    statusLabel: "Pré-jogo",
+    statusKey: "SCHEDULED",
+    minute: null,
+  };
+  const matchFinished = currentLive.statusKey === "FINISHED" || currentLive.isFinished;
+
+  const winners = useMemo(() => {
+    if (!matchFinished) return [];
+    return participants.filter(
+      (participant) =>
+        participant.homeGoals === Number(currentLive.homeGoals || 0) &&
+        participant.awayGoals === Number(currentLive.awayGoals || 0),
+    );
+  }, [currentLive, matchFinished, participants]);
+
+  const prizeShare = winners.length > 0 ? totalPool / winners.length : 0;
+  const searchWindowLabel = formatSearchDaysLabel(searchDays);
+  const searchWindowScope = formatSearchDaysScope(searchDays);
+  const searchWindowNotice = formatSearchDaysNotice(searchDays);
+  const windowEnd = new Date(now.getTime() + searchDays * 24 * 60 * 60 * 1000);
+  const homeTeamLabel = selectedMatch?.home || "Time 1";
+  const awayTeamLabel = selectedMatch?.away || "Time 2";
+  const participantLink = poolCode ? makePoolLink(poolCode) : "";
+  const coordinatorLink = poolCode && adminToken ? makePoolLink(poolCode, adminToken) : "";
+
+  function applyPoolBundle(bundle, token = "", options = {}) {
+    const nextPool = bundle.pool;
+    const nextCode = nextPool.code;
+    const nextAdminToken = token || adminToken;
+    const preserveAccess = Boolean(options.preserveAccess);
+
+    setPoolCode(nextCode);
+    setSearchDays(nextPool.searchDays || 7);
+    setSelectedMatchId(nextPool.selectedMatchId || nextPool.selectedMatch?.id || "");
+    setSelectedMatchData(nextPool.selectedMatch || null);
+    setBetsClosed(Boolean(nextPool.betsClosed));
+    setBetValue(Number(nextPool.betValue || 0));
+    setPixKey(nextPool.pixKey || "");
+    setMerchantName(nextPool.merchantName || "");
+    setParticipants(bundle.participants || []);
+    setLiveMatch(nextPool.liveMatch || nextPool.selectedMatch || null);
+    if (!preserveAccess) setIsCoordinator(Boolean(bundle.isCoordinator));
+    setPoolError("");
+
+    if (!preserveAccess && nextAdminToken && bundle.isCoordinator) {
+      setAdminToken(nextAdminToken);
+      window.localStorage.setItem(adminStorageKey(nextCode), nextAdminToken);
+    }
+  }
+
+  async function loadPool(code, token = "") {
+    const normalizedCode = normalizePoolCode(code);
+    if (!normalizedCode) return;
+
+    setPoolLoading(true);
+    setPoolError("");
+    setPoolNotice("");
+
+    try {
+      const storedAdminToken = token || window.localStorage.getItem(adminStorageKey(normalizedCode)) || "";
+      const bundle = await fetchSharedPool(normalizedCode, storedAdminToken);
+      applyPoolBundle(bundle, storedAdminToken);
+      setEntryCode(normalizedCode);
+
+      const nextUrl = makePoolLink(normalizedCode, bundle.isCoordinator ? storedAdminToken : "");
+      window.history.replaceState(null, "", nextUrl);
+    } catch (error) {
+      setPoolError(error.message);
+    } finally {
+      setPoolLoading(false);
+      setInitialPoolChecked(true);
+    }
+  }
+
+  async function createNewPool() {
+    setPoolLoading(true);
+    setPoolError("");
+    setPoolNotice("");
+
+    try {
+      const bundle = await createSharedPool({ title: "Bolão Fácil", searchDays, betValue });
+      applyPoolBundle(bundle, bundle.adminToken);
+      const nextUrl = makePoolLink(bundle.pool.code, bundle.adminToken);
+      window.history.replaceState(null, "", nextUrl);
+      setPoolNotice("Bolão criado.");
+    } catch (error) {
+      setPoolError(error.message);
+    } finally {
+      setPoolLoading(false);
+      setInitialPoolChecked(true);
+    }
+  }
+
+  function joinPool(event) {
+    event.preventDefault();
+    loadPool(entryCode);
+  }
+
+  function leavePool() {
+    setPoolCode("");
+    setAdminToken("");
+    setIsCoordinator(false);
+    setParticipants([]);
+    setSelectedMatchId("");
+    setSelectedMatchData(null);
+    setLiveMatch(null);
+    setBetsClosed(false);
+    setPoolNotice("");
+    setPoolError("");
+    window.history.replaceState(null, "", window.location.pathname);
+  }
+
+  async function copyShareLink(link, kind) {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setShareCopied(kind);
+    window.setTimeout(() => setShareCopied(""), 1600);
+  }
+
+  async function shareParticipantLink() {
+    if (!participantLink) return;
+    const text = `Bolão Fácil\nCódigo: ${poolCode}\nAcompanhar: ${participantLink}`;
+
+    if (navigator.share) {
+      await navigator.share({ title: "Bolão Fácil", text, url: participantLink });
+      return;
+    }
+
+    await copyShareLink(text, "participante");
+  }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeFromUrl = params.get("bolao") || params.get("code") || "";
+    const adminFromUrl = params.get("admin") || "";
+
+    if (codeFromUrl) {
+      loadPool(codeFromUrl, adminFromUrl);
+    } else {
+      setInitialPoolChecked(true);
+    }
+    // Only run on first load. loadPool is intentionally a function declaration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+    setMatchesLoading(true);
+    setMatches([]);
+    setMatchesError("");
+    setMatchesNotice("");
+    setMatchSource("");
+
+    fetchImportantMatches(BRAZIL, searchDays)
+      .then((data) => {
+        if (canceled) return;
+        const nextMatches = data.matches || [];
+        setMatches(nextMatches);
+        setMatchesNotice(data.message || "");
+        setMatchSource(data.source || "");
+      })
+      .catch((error) => {
+        if (canceled) return;
+        setMatchesError(error.message);
+      })
+      .finally(() => {
+        if (!canceled) setMatchesLoading(false);
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [reloadKey, searchDays]);
+
+  const refreshLiveMatch = useCallback(async () => {
+    if (!selectedMatch) return;
+
+    setLiveLoading(true);
+    try {
+      const nextLiveMatch = await fetchMatchStatus(selectedMatch.id);
+      setLiveMatch(nextLiveMatch);
+      setLiveError("");
+      if (poolCode && isCoordinator) {
+        updateSharedPool(poolCode, adminToken, { liveMatch: nextLiveMatch }).catch(() => {});
+      }
+      if (nextLiveMatch.isFinished) setTracking(false);
+    } catch (error) {
+      setLiveError(error.message);
+    } finally {
+      setLiveLoading(false);
+    }
+  }, [adminToken, isCoordinator, poolCode, selectedMatch]);
+
+  useEffect(() => {
+    if (!tracking || !selectedMatch || matchFinished) return undefined;
+
+    refreshLiveMatch();
+    const interval = window.setInterval(refreshLiveMatch, 30_000);
+
+    return () => window.clearInterval(interval);
+  }, [matchFinished, refreshLiveMatch, selectedMatch, tracking]);
+
+  useEffect(() => {
+    if (participants.length === 0) {
+      setSelectedParticipantId("");
+      return;
+    }
+
+    if (!participants.some((participant) => participant.id === selectedParticipantId)) {
+      setSelectedParticipantId(participants[0].id);
+    }
+  }, [participants, selectedParticipantId]);
+
+  useEffect(() => {
+    const description = makeBetDescription(selectedMatch, selectedParticipant);
+    const cleanPixKey = pixKey.trim();
+    const cleanMerchantName = merchantName.trim();
+
+    if (!cleanPixKey || !cleanMerchantName) {
+      setPixPayload("");
+      setQrCodeUrl("");
+      setCopied(false);
+      setPixSendStatus("");
+      return;
+    }
+
+    const payload = buildPixPayload({
+      pixKey: cleanPixKey,
+      amount: betValue,
+      merchantName: cleanMerchantName,
+      merchantCity: "SAO PAULO",
+      description,
+      txid: `BOLAO${selectedParticipant?.id?.replace(/\W/g, "").slice(-10) || "PIX"}`,
+    });
+
+    setPixPayload(payload);
+    setCopied(false);
+    setPixSendStatus("");
+
+    if (!payload) {
+      setQrCodeUrl("");
+      return;
+    }
+
+    QRCode.toDataURL(payload, { margin: 1, width: 232, errorCorrectionLevel: "M" })
+      .then((url) => setQrCodeUrl(url))
+      .catch(() => setQrCodeUrl(""));
+  }, [betValue, merchantName, pixKey, selectedMatch, selectedParticipant]);
+
+  async function savePoolPatch(patch, successMessage = "Bolão atualizado.") {
+    if (!poolCode || !isCoordinator) return null;
+
+    setPoolError("");
+    try {
+      const bundle = await updateSharedPool(poolCode, adminToken, patch);
+      applyPoolBundle(bundle, adminToken, { preserveAccess: true });
+      setPoolNotice(successMessage);
+      window.setTimeout(() => setPoolNotice(""), 1800);
+      return bundle;
+    } catch (error) {
+      setPoolError(error.message);
+      return null;
+    }
+  }
+
+  function handleSearchDaysChange(days) {
+    setSearchDays(days);
+    if (poolCode && isCoordinator) {
+      savePoolPatch({ searchDays: days }, "Janela de busca salva.");
+    }
+  }
+
+  async function savePaymentSettings() {
+    await savePoolPatch(
+      {
+        betValue: Number(betValue || 0),
+        pixKey,
+        merchantName,
+      },
+      "Dados do Pix salvos no bolão.",
+    );
+  }
+
+  async function addParticipant(event) {
+    event.preventDefault();
+    const trimmedName = form.name.trim();
+    if (!trimmedName || !poolCode || !selectedMatch || betsClosed) return;
+
+    const participant = {
+      name: trimmedName,
+      homeGoals: Number(form.homeGoals),
+      awayGoals: Number(form.awayGoals),
+    };
+
+    setPoolError("");
+    try {
+      const bundle = await addSharedParticipant(poolCode, participant);
+      const addedParticipant =
+        bundle.participants?.find((item) => item.name === participant.name) || bundle.participants?.at(-1);
+      applyPoolBundle(bundle, adminToken, { preserveAccess: true });
+      setSelectedParticipantId(addedParticipant?.id || "");
+      setForm({ name: "", homeGoals: 1, awayGoals: 0 });
+    } catch (error) {
+      setPoolError(error.message);
+    }
+  }
+
+  function updateParticipant(id, patch, sync = true) {
+    setParticipants((current) =>
+      current.map((participant) => (participant.id === id ? { ...participant, ...patch } : participant)),
+    );
+
+    if (!sync || !poolCode) return;
+
+    updateSharedParticipant(poolCode, id, adminToken, patch)
+      .then((bundle) => applyPoolBundle(bundle, adminToken, { preserveAccess: true }))
+      .catch((error) => setPoolError(error.message));
+  }
+
+  async function saveParticipantName(id) {
+    const participant = participants.find((item) => item.id === id);
+    if (!participant || !poolCode) return;
+
+    try {
+      const bundle = await updateSharedParticipant(poolCode, id, adminToken, { name: participant.name });
+      applyPoolBundle(bundle, adminToken, { preserveAccess: true });
+    } catch (error) {
+      setPoolError(error.message);
+    }
+  }
+
+  async function removeParticipant(id) {
+    if (!poolCode) return;
+
+    setPoolError("");
+    try {
+      const bundle = await deleteSharedParticipant(poolCode, id, adminToken);
+      applyPoolBundle(bundle, adminToken, { preserveAccess: true });
+      if (selectedParticipantId === id) {
+        setSelectedParticipantId(bundle.participants?.[0]?.id || "");
+      }
+    } catch (error) {
+      setPoolError(error.message);
+    }
+  }
+
+  function selectMatch(match) {
+    if (!isCoordinator) return;
+    setSelectedMatchId(match.id);
+    setSelectedMatchData(match);
+    setLiveMatch(match);
+    setLiveError("");
+    setBetsClosed(false);
+    setTracking(false);
+    savePoolPatch(
+      {
+        selectedMatchId: match.id,
+        selectedMatch: match,
+        liveMatch: match,
+        betsClosed: false,
+      },
+      "Jogo salvo no bolão.",
+    );
+  }
+
+  function clearMatchSelection() {
+    if (!isCoordinator) return;
+    setSelectedMatchId("");
+    setSelectedMatchData(null);
+    setLiveMatch(null);
+    setLiveError("");
+    setBetsClosed(false);
+    setTracking(false);
+    savePoolPatch(
+      {
+        selectedMatchId: null,
+        selectedMatch: null,
+        liveMatch: null,
+        betsClosed: false,
+      },
+      "Escolha do jogo anulada.",
+    );
+  }
+
+  function closeBets() {
+    if (!isCoordinator) return;
+    setBetsClosed(true);
+    setTracking(false);
+    setLiveMatch(selectedMatch);
+    savePoolPatch({ betsClosed: true, liveMatch: selectedMatch }, "Apostas fechadas.");
+  }
+
+  async function copyPixPayload() {
+    if (!pixPayload) return;
+    await navigator.clipboard.writeText(pixPayload);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  function makePixShareText() {
+    const participant = selectedParticipant || {};
+    return [
+      "Bolão Fácil",
+      selectedMatch ? `Jogo: ${selectedMatch.home} x ${selectedMatch.away}` : "",
+      participant.name
+        ? `Aposta de ${participant.name}: ${participant.homeGoals} x ${participant.awayGoals}`
+        : "",
+      `Valor: ${formatCurrency(betValue)}`,
+      `Recebedor: ${merchantName.trim()}`,
+      `Chave Pix: ${pixKey.trim()}`,
+      poolCode ? `Código do bolão: ${poolCode}` : "",
+      participantLink ? `Acompanhe o bolão: ${participantLink}` : "",
+      "",
+      "Pix copia e cola:",
+      pixPayload,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async function sendPixInfo() {
+    if (!pixPayload) return;
+
+    const text = makePixShareText();
+
+    try {
+      if (navigator.share) {
+        const files = qrCodeUrl ? [dataUrlToFile(qrCodeUrl, "qrcode-pix-bolao-facil.png")] : [];
+        const shareData =
+          files.length > 0 && navigator.canShare?.({ files })
+            ? { title: "Pix do Bolão Fácil", text, files }
+            : { title: "Pix do Bolão Fácil", text };
+
+        await navigator.share(shareData);
+        setPixSendStatus("Pix e link enviados.");
+        return;
+      }
+
+      await navigator.clipboard.writeText(text);
+      setPixSendStatus("Pix e link copiados para enviar.");
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      await navigator.clipboard.writeText(text);
+      setPixSendStatus("Pix e link copiados para enviar.");
+    }
+  }
+
+  if (!initialPoolChecked) {
+    return (
+      <main className="app-shell">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Bolão de futebol</p>
+            <h1>Bolão Fácil</h1>
+          </div>
+        </header>
+        <section className="panel loading-panel">
+          <div className="loading-bar" />
+          <p>Carregando bolão...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!poolCode) {
+    return (
+      <main className="app-shell">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Bolão de futebol</p>
+            <h1>Bolão Fácil</h1>
+          </div>
+        </header>
+
+        <section className="entry-grid">
+          <div className="panel entry-panel">
+            <p className="eyebrow">Organizar</p>
+            <h2>Bolão novo</h2>
+            <div className="window-picker entry-window-picker" aria-label="Janela inicial de busca">
+              <span>Buscar jogos em</span>
+              <div className="segmented-control">
+                {SEARCH_WINDOWS.map((option) => (
+                  <button
+                    type="button"
+                    key={option.days}
+                    className={option.days === searchDays ? "active" : ""}
+                    onClick={() => setSearchDays(option.days)}
+                    aria-pressed={option.days === searchDays}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button className="primary-action" type="button" onClick={createNewPool} disabled={poolLoading}>
+              <Plus size={18} />
+              {poolLoading ? "Criando" : "Criar bolão"}
+            </button>
+          </div>
+
+          <form className="panel entry-panel" onSubmit={joinPool}>
+            <p className="eyebrow">Entrar</p>
+            <h2>Entrar com código</h2>
+            <label>
+              Código do bolão
+              <input
+                value={entryCode}
+                onChange={(event) => setEntryCode(event.target.value)}
+                placeholder="BOLAO-8K4P"
+              />
+            </label>
+            <button className="secondary-action" type="submit" disabled={poolLoading || !entryCode.trim()}>
+              Entrar no bolão
+            </button>
+          </form>
+        </section>
+
+        {poolError && <div className="notice error entry-notice">{poolError}</div>}
+      </main>
+    );
+  }
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Bolão de futebol</p>
+          <h1>Bolão Fácil</h1>
+        </div>
+        <div className="topbar-actions">
+          <button className="icon-button" type="button" onClick={() => loadPool(poolCode, adminToken)} aria-label="Atualizar bolão">
+            <RefreshCw size={18} />
+          </button>
+          <button className="icon-button" type="button" onClick={leavePool} aria-label="Sair do bolão">
+            <X size={18} />
+          </button>
+        </div>
+      </header>
+
+      {(poolError || poolNotice) && (
+        <div className={`notice ${poolError ? "error" : ""}`}>{poolError || poolNotice}</div>
+      )}
+
+      <section className="summary-strip" aria-label="Resumo do bolão">
+        <div>
+          <span>Janela</span>
+          <strong>{searchWindowLabel}</strong>
+        </div>
+        <div>
+          <span>Participantes</span>
+          <strong>{participants.length}</strong>
+        </div>
+        <div>
+          <span>Valor total</span>
+          <strong>{formatCurrency(totalPool)}</strong>
+        </div>
+        <div>
+          <span>Status</span>
+          <strong>{betsClosed ? "Apostas fechadas" : "Aberto"}</strong>
+        </div>
+      </section>
+
+      <div className="layout-grid">
+        <section className="panel match-panel">
+          <div className="section-title">
+            <div>
+              <p className="eyebrow">Próximos {searchWindowLabel}</p>
+              <h2>Jogos importantes</h2>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => setReloadKey((current) => current + 1)}
+              disabled={matchesLoading}
+              aria-label="Atualizar jogos"
+            >
+              <RefreshCw size={18} />
+            </button>
+          </div>
+
+          <p className="time-window">
+            Janela: agora até{" "}
+            {new Intl.DateTimeFormat("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(windowEnd)}
+            .
+          </p>
+
+          <div className="window-picker" aria-label="Janela de busca">
+            <span>Buscar em</span>
+            <div className="segmented-control">
+              {SEARCH_WINDOWS.map((option) => (
+                <button
+                  type="button"
+                  key={option.days}
+                  className={option.days === searchDays ? "active" : ""}
+                  onClick={() => handleSearchDaysChange(option.days)}
+                  aria-pressed={option.days === searchDays}
+                  disabled={!isCoordinator}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {matchSource && (
+            <p className="source-pill">
+              Dados reais via {matchSource}. A lista considera apenas {searchWindowScope}.
+            </p>
+          )}
+
+          {matchesLoading && <div className="loading-bar" />}
+          {matchesError && <div className="notice error">{matchesError}</div>}
+          {!matchesError && matchesNotice && <div className="notice">{matchesNotice}</div>}
+          {!matchesLoading && !matchesError && matches.length === 0 && !matchesNotice && (
+            <div className="notice">Nenhum jogo encontrado {searchWindowNotice}.</div>
+          )}
+
+          {selectedMatch ? (
+            <div className="chosen-match">
+              <div className="match-row selected">
+                <div>
+                  <strong>
+                    {selectedMatch.home} x {selectedMatch.away}
+                  </strong>
+                  <span>
+                    {selectedMatch.competition} · {selectedMatch.importance}
+                    {selectedMatch.statusLabel ? ` · ${selectedMatch.statusLabel}` : ""}
+                  </span>
+                </div>
+                <time>{formatKickoff(selectedMatch.kickoff)}</time>
+              </div>
+              {isCoordinator && (
+                <button className="secondary-action clear-match-button" type="button" onClick={clearMatchSelection}>
+                  <X size={18} />
+                  Anular escolha
+                </button>
+              )}
+            </div>
+          ) : !isCoordinator ? (
+            <div className="notice">Aguardando quem criou o bolão escolher o jogo.</div>
+          ) : (
+            <div className="match-list">
+              {matches.map((match) => (
+                <button type="button" key={match.id} className="match-row" onClick={() => selectMatch(match)}>
+                  <div>
+                    <strong>
+                      {match.home} x {match.away}
+                    </strong>
+                    <span>
+                      {match.competition} · {match.importance}
+                      {match.statusLabel ? ` · ${match.statusLabel}` : ""}
+                    </span>
+                  </div>
+                  <time>{formatKickoff(match.kickoff)}</time>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel">
+          <div className="section-title">
+            <div>
+              <p className="eyebrow">Apostar</p>
+              <h2>Participantes e placares</h2>
+            </div>
+            <Users size={22} />
+          </div>
+
+          <form className="bet-form" onSubmit={addParticipant}>
+            <label>
+              Nome
+              <input
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Participante"
+                disabled={betsClosed || !selectedMatch}
+              />
+            </label>
+            <label>
+              <span className="team-label-text">{homeTeamLabel}</span>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={form.homeGoals}
+                onChange={(event) => setForm((current) => ({ ...current, homeGoals: event.target.value }))}
+                disabled={betsClosed || !selectedMatch}
+              />
+            </label>
+            <label>
+              <span className="team-label-text">{awayTeamLabel}</span>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={form.awayGoals}
+                onChange={(event) => setForm((current) => ({ ...current, awayGoals: event.target.value }))}
+                disabled={betsClosed || !selectedMatch}
+              />
+            </label>
+            <button className="icon-action" type="submit" disabled={betsClosed || !selectedMatch}>
+              <Plus size={18} />
+              Adicionar
+            </button>
+          </form>
+
+          <button
+            className="close-bets-button inline-close-button"
+            type="button"
+            onClick={closeBets}
+            disabled={!isCoordinator || !selectedMatch || betsClosed || participants.length === 0}
+          >
+            <Lock size={18} />
+            Fechar apostas
+          </button>
+
+          <div className="participants-table" role="table" aria-label="Participantes">
+            <div className="table-head" role="row">
+              <span>Nome</span>
+              <span>Placar</span>
+              <span>Pago</span>
+              <span />
+            </div>
+            {participants.map((participant) => (
+              <div className="table-row" role="row" key={participant.id}>
+                <input
+                  value={participant.name}
+                  onChange={(event) => updateParticipant(participant.id, { name: event.target.value }, false)}
+                  onBlur={() => saveParticipantName(participant.id)}
+                  disabled={betsClosed}
+                  aria-label={`Nome de ${participant.name}`}
+                />
+                <div className="score-inputs">
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={participant.homeGoals}
+                    onChange={(event) => updateParticipant(participant.id, { homeGoals: Number(event.target.value) })}
+                    disabled={betsClosed}
+                    aria-label={`Gols do mandante para ${participant.name}`}
+                  />
+                  <span>x</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={participant.awayGoals}
+                    onChange={(event) => updateParticipant(participant.id, { awayGoals: Number(event.target.value) })}
+                    disabled={betsClosed}
+                    aria-label={`Gols do visitante para ${participant.name}`}
+                  />
+                </div>
+                <label className="paid-toggle">
+                  <input
+                    type="checkbox"
+                    checked={participant.paid}
+                    onChange={(event) => updateParticipant(participant.id, { paid: event.target.checked })}
+                    disabled={!isCoordinator}
+                  />
+                  <span />
+                </label>
+                <button
+                  className="icon-button danger"
+                  type="button"
+                  onClick={() => removeParticipant(participant.id)}
+                  disabled={betsClosed || participants.length <= 1}
+                  aria-label={`Remover ${participant.name}`}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel payment-panel">
+          <div className="section-title">
+            <div>
+              <p className="eyebrow">Pagamento</p>
+              <h2>Pix com QR Code</h2>
+            </div>
+            <CreditCard size={22} />
+          </div>
+
+          <div className="payment-grid">
+            <label>
+              Valor por aposta
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={betValue}
+                onChange={(event) => setBetValue(event.target.value)}
+                disabled={!isCoordinator}
+              />
+            </label>
+            <label>
+              Participante
+              <select
+                value={selectedParticipantId}
+                onChange={(event) => setSelectedParticipantId(event.target.value)}
+              >
+                {participants.length === 0 && <option value="">Sem participantes</option>}
+                {participants.map((participant) => (
+                  <option value={participant.id} key={participant.id}>
+                    {participant.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="full-field">
+              Chave Pix
+              <input
+                value={pixKey}
+                onChange={(event) => setPixKey(event.target.value)}
+                placeholder="Inclua chave Pix"
+                disabled={!isCoordinator}
+              />
+            </label>
+            <label className="full-field">
+              Recebedor
+              <input
+                value={merchantName}
+                onChange={(event) => setMerchantName(event.target.value)}
+                placeholder="Titular da conta Pix"
+                disabled={!isCoordinator}
+              />
+            </label>
+          </div>
+
+          {isCoordinator && (
+            <button className="secondary-action save-payment-button" type="button" onClick={savePaymentSettings}>
+              <Check size={18} />
+              Salvar Pix no bolão
+            </button>
+          )}
+
+          <div className="qr-area">
+            <div className="qr-box">
+              {qrCodeUrl ? (
+                <img src={qrCodeUrl} alt="QR Code Pix" />
+              ) : (
+                <div className="qr-placeholder">
+                  <QrCode size={40} />
+                  <span>Informe chave Pix e recebedor</span>
+                </div>
+              )}
+            </div>
+            <div className="pix-details">
+              <span>Valor</span>
+              <strong>{formatCurrency(betValue)}</strong>
+              <span>Aposta</span>
+              <strong>{makeBetDescription(selectedMatch, selectedParticipant)}</strong>
+              <div className="pix-actions">
+                <button className="secondary-action" type="button" onClick={copyPixPayload} disabled={!pixPayload}>
+                  {copied ? <Check size={18} /> : <Copy size={18} />}
+                  {copied ? "Copiado" : "Copiar Pix"}
+                </button>
+                <button className="primary-action" type="button" onClick={sendPixInfo} disabled={!pixPayload}>
+                  <Send size={18} />
+                  Enviar Pix e link
+                </button>
+              </div>
+              {pixPayload && (
+                <details className="pix-code">
+                  <summary>Pix copia e cola</summary>
+                  <code>{pixPayload}</code>
+                </details>
+              )}
+              {pixSendStatus && <p className="send-status">{pixSendStatus}</p>}
+            </div>
+          </div>
+
+          <div className="pool-access">
+            <div className="pool-code-card">
+              <span>Código do bolão</span>
+              <strong>{poolCode}</strong>
+            </div>
+            <div className="pool-access-actions">
+              <button className="secondary-action" type="button" onClick={shareParticipantLink}>
+                <Send size={18} />
+                Enviar link para acompanhar
+              </button>
+              {isCoordinator && (
+                <details className="organizer-access">
+                  <summary>Meu acesso para editar este bolão</summary>
+                  <p>Guarde este link para voltar depois e mudar jogo, Pix, pagamentos ou fechar apostas.</p>
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() => copyShareLink(coordinatorLink, "organizador")}
+                  >
+                    <Lock size={18} />
+                    {shareCopied === "organizador" ? "Copiado" : "Copiar meu link de edição"}
+                  </button>
+                </details>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel close-panel">
+          <div className="section-title">
+            <div>
+              <p className="eyebrow">Fechamento</p>
+              <h2>Histograma e resultado</h2>
+            </div>
+            <BarChart3 size={22} />
+          </div>
+
+          <div className="histogram-wrap">
+            <div className="histogram-table">
+              <div className="table-head">
+                <span>Placar</span>
+                <span>Apostas</span>
+              </div>
+              {histogram.map((item) => (
+                <div className="histogram-row" key={item.score}>
+                  <span>{item.score}</span>
+                  <strong>{item.count}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="bars" aria-label="Histograma de placares">
+              {histogram.map((item) => (
+                <div className="bar-line" key={item.score}>
+                  <span>{item.score}</span>
+                  <div>
+                    <i style={{ width: `${Math.max(10, (item.count / maxHistogramCount) * 100)}%` }} />
+                  </div>
+                  <strong>{item.count}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel live-panel">
+          <div className="section-title">
+            <div>
+              <p className="eyebrow">Ao vivo</p>
+              <h2>Acompanhamento do jogo</h2>
+            </div>
+            <Timer size={22} />
+          </div>
+
+          <div className="scoreboard">
+            <span>{selectedMatch?.home || "Mandante"}</span>
+            <strong>
+              {Number(currentLive.homeGoals || 0)} x {Number(currentLive.awayGoals || 0)}
+            </strong>
+            <span>{selectedMatch?.away || "Visitante"}</span>
+          </div>
+
+          <div className="live-meta">
+            <span>{currentLive.statusLabel || "Pré-jogo"}</span>
+            <span>{Number.isFinite(currentLive.minute) ? `${currentLive.minute}'` : "API"}</span>
+          </div>
+
+          <p className="api-disclaimer">
+            Dados por {matchSource || "football-data.org"}. As atualizações de placar podem ter atraso de alguns
+            minutos.
+          </p>
+
+          {liveError && <div className="notice error">{liveError}</div>}
+
+          <div className="live-actions">
+            <button
+              className="primary-action"
+              type="button"
+              onClick={() => setTracking((current) => !current)}
+              disabled={!isCoordinator || !betsClosed || !selectedMatch || liveLoading || matchFinished}
+            >
+              <Timer size={18} />
+              {tracking ? "Pausar" : liveLoading ? "Atualizando" : "Acompanhar"}
+            </button>
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={refreshLiveMatch}
+              disabled={!isCoordinator || !betsClosed || !selectedMatch || liveLoading || matchFinished}
+            >
+              {liveLoading ? "Atualizando" : "Atualizar agora"}
+            </button>
+          </div>
+
+          <div className="winner-box">
+            <div>
+              <Trophy size={22} />
+              <strong>{matchFinished ? "Resultado final" : "Premiação"}</strong>
+            </div>
+            {!matchFinished && <p>Feche as apostas e acompanhe o placar real da API para calcular a divisão.</p>}
+            {matchFinished && winners.length > 0 && (
+              <p>
+                {winners.map((winner) => winner.name).join(", ")} ganham {formatCurrency(prizeShare)} cada.
+              </p>
+            )}
+            {matchFinished && winners.length === 0 && (
+              <p>Ninguém acertou o placar exato. O prêmio de {formatCurrency(totalPool)} fica pendente.</p>
+            )}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+export default App;
