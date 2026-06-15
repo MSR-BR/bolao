@@ -1,6 +1,13 @@
 async function requestJson(path) {
-  const response = await fetch(path);
-  const data = await response.json().catch(() => ({}));
+  let response;
+  try {
+    response = await fetch(path);
+  } catch {
+    throw new Error("Nao foi possivel conectar a API de futebol. Atualize a pagina e tente novamente.");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : {};
 
   if (!response.ok) {
     const message = data.message || "Nao foi possivel consultar a API de futebol.";
@@ -8,6 +15,10 @@ async function requestJson(path) {
     error.status = response.status;
     error.code = data.code;
     throw error;
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error("Nao foi possivel consultar a API de futebol. Use o link publico do app e tente novamente.");
   }
 
   return data;

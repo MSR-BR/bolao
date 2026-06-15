@@ -1,12 +1,19 @@
 async function requestJson(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-  const data = await response.json().catch(() => ({}));
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+  } catch {
+    throw new Error("Nao foi possivel conectar ao Bolao Facil. Atualize a pagina e confirme se esta usando o link publico do app.");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : {};
 
   if (!response.ok) {
     const message = data.message || "Nao foi possivel acessar o bolao.";
@@ -14,6 +21,10 @@ async function requestJson(path, options = {}) {
     error.status = response.status;
     error.code = data.code;
     throw error;
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error("Nao foi possivel acessar a API do Bolao Facil. Use o link publico do app e tente novamente.");
   }
 
   return data;
