@@ -33,6 +33,7 @@ const SEARCH_WINDOWS = [
   { days: 3, label: "3 dias" },
   { days: 7, label: "7 dias" },
 ];
+const TERMS_UPDATED_AT = "junho de 2026";
 
 function scoreKey(homeGoals, awayGoals) {
   return `${homeGoals} x ${awayGoals}`;
@@ -92,6 +93,127 @@ function useNow() {
   return now;
 }
 
+function LegalFooter({ onOpen }) {
+  return (
+    <footer className="legal-footer" aria-label="Termos e privacidade">
+      <button className="legal-link" type="button" onClick={onOpen}>
+        Termos de uso e privacidade
+      </button>
+      <span>Uso privado. O app não intermedeia pagamentos ou prêmios.</span>
+    </footer>
+  );
+}
+
+function LegalModal({ onClose }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="terms-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="terms-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="terms-header">
+          <div>
+            <p className="eyebrow">Aviso legal</p>
+            <h2 id="terms-title">Termos de uso e privacidade</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Fechar termos">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="terms-body">
+          <p className="terms-meta">Atualizado em {TERMS_UPDATED_AT}. Este texto é informativo e não substitui orientação jurídica, contábil, tributária, regulatória ou financeira.</p>
+
+          <div className="terms-alert">
+            <strong>Use somente se tiver certeza de que o seu uso é permitido.</strong>
+            <p>
+              O Bolão Fácil é apenas uma ferramenta tecnológica para organizar palpites entre pessoas conhecidas.
+              Ele não autoriza, licencia, regulariza nem torna lícita qualquer atividade que dependa de autorização
+              pública, análise jurídica ou cumprimento de regras específicas.
+            </p>
+          </div>
+
+          <section className="terms-section">
+            <h3>Natureza do aplicativo</h3>
+            <ul>
+              <li>O app não é casa de apostas, loteria, rifa, sorteio, promoção comercial, cassino, jogo online, bolsa de apostas, instituição financeira, instituição de pagamento, carteira digital, escrow, meio de cobrança ou serviço de distribuição de prêmios.</li>
+              <li>O app não define odds, cotas, probabilidades, banca, margem, comissão, taxa de administração, lucro da casa ou qualquer remuneração pela participação.</li>
+              <li>O app não recebe, capta, guarda, retém, movimenta, compensa, garante, audita, confirma, fiscaliza, reparte ou paga valores. Qualquer Pix é feito fora do app, diretamente entre as pessoas envolvidas.</li>
+              <li>O QR Code Pix e o código copia e cola são gerados a partir dos dados informados pelo coordenador. O app não verifica titularidade, saldo, pagamento, estorno, fraude, chargeback, regularidade fiscal ou identidade do recebedor.</li>
+            </ul>
+          </section>
+
+          <section className="terms-section">
+            <h3>Responsabilidade do coordenador e dos participantes</h3>
+            <ul>
+              <li>O coordenador do bolão é o único responsável por verificar se pode criar, divulgar, cobrar, receber valores, definir prêmio, confirmar pagamentos e repartir eventual valor entre participantes.</li>
+              <li>Participantes devem conferir jogo, placar, valor, chave Pix, recebedor e regras combinadas antes de enviar qualquer pagamento. Enviar Pix é uma decisão externa ao app.</li>
+              <li>Não use o app com menores de idade, público indeterminado, publicidade, patrocínio, comissão, lucro, habitualidade, escala comercial, promessa de rentabilidade, vantagem econômica organizada ou qualquer situação que possa exigir autorização, registro, licença, contabilidade formal ou análise regulatória.</li>
+              <li>Se houver dúvida sobre apostas esportivas, prêmios, sorteios, promoções, jogos, tributação, direito do consumidor, LGPD ou qualquer obrigação legal, não use até obter orientação profissional e, se aplicável, autorização do órgão competente.</li>
+            </ul>
+          </section>
+
+          <section className="terms-section">
+            <h3>Regulação e cautela</h3>
+            <p>
+              No Brasil, apostas de quota fixa, promoções comerciais, sorteios, loterias e atividades próximas podem
+              estar sujeitas a regras e fiscalização de autoridades competentes, incluindo a Secretaria de Prêmios e
+              Apostas do Ministério da Fazenda. O Bolão Fácil não é autorização governamental e não deve ser usado para
+              contornar exigências legais.
+            </p>
+            <div className="terms-links">
+              <a href="https://www.gov.br/fazenda/pt-br/composicao/orgaos/secretaria-de-premios-e-apostas" target="_blank" rel="noreferrer">
+                Secretaria de Prêmios e Apostas
+              </a>
+              <a href="https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/lei/l14790.htm" target="_blank" rel="noreferrer">
+                Lei 14.790/2023
+              </a>
+            </div>
+          </section>
+
+          <section className="terms-section">
+            <h3>Dados, privacidade e segurança</h3>
+            <ul>
+              <li>Para funcionar, o app pode armazenar dados do bolão, como código compartilhado, jogo escolhido, nomes ou apelidos dos participantes, palpites, status de pagamento, valor do bolão, chave Pix, nome do recebedor, dados de acompanhamento do jogo e credenciais técnicas de administração.</li>
+              <li>Use apelidos quando possível e evite inserir CPF, telefone, endereço, documentos, dados bancários, informações sensíveis ou qualquer dado que não seja indispensável. Para Pix, prefira chave aleatória quando fizer sentido.</li>
+              <li>Dados podem ser processados por serviços técnicos usados pelo app, como hospedagem, banco de dados, APIs de futebol, navegador e armazenamento local do aparelho. Links compartilhados podem permitir acesso às informações do bolão por qualquer pessoa que receba o link.</li>
+              <li>O link de administração deve ser tratado como senha. Quem tiver esse link pode alterar dados do bolão. Não envie esse link para participantes se a intenção for apenas acompanhar.</li>
+              <li>Nenhum sistema é imune a falhas, indisponibilidade, atraso, perda de dados, erro humano, acesso indevido ou mudança de regra de terceiros. Mantenha registros próprios se o acerto financeiro depender disso.</li>
+            </ul>
+          </section>
+
+          <section className="terms-section">
+            <h3>Dados esportivos e resultado</h3>
+            <p>
+              Jogos, horários, placares e status vêm de API externa e podem ter atraso, erro, indisponibilidade,
+              alteração posterior ou cobertura limitada. O app não garante tempo real perfeito nem valida oficialmente
+              resultado, súmula, punições, W.O., cancelamentos, prorrogação ou critérios especiais definidos pelo grupo.
+            </p>
+          </section>
+
+          <section className="terms-section">
+            <h3>Aceite</h3>
+            <p>
+              Ao usar o Bolão Fácil, você declara que leu estes termos, entende as limitações do app e assume a
+              responsabilidade pelo uso. Se não concordar, se o uso envolver risco regulatório ou se você não tiver
+              certeza sobre a legalidade, não use o aplicativo.
+            </p>
+          </section>
+        </div>
+
+        <footer className="terms-actions">
+          <button className="primary-action" type="button" onClick={onClose}>
+            Entendi
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const now = useNow();
   const [poolCode, setPoolCode] = useState("");
@@ -127,6 +249,7 @@ function App() {
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState("");
   const [tracking, setTracking] = useState(false);
+  const [legalOpen, setLegalOpen] = useState(false);
 
   const selectedMatch = useMemo(
     () => selectedMatchData || matches.find((match) => match.id === selectedMatchId) || null,
@@ -356,6 +479,22 @@ function App() {
 
     return () => window.clearInterval(interval);
   }, [matchFinished, refreshLiveMatch, selectedMatch, tracking]);
+
+  useEffect(() => {
+    if (!legalOpen) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setLegalOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    document.body.classList.add("modal-open");
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.classList.remove("modal-open");
+    };
+  }, [legalOpen]);
 
   useEffect(() => {
     if (participants.length === 0) {
@@ -615,6 +754,8 @@ function App() {
           <div className="loading-bar" />
           <p>Carregando bolão...</p>
         </section>
+        <LegalFooter onOpen={() => setLegalOpen(true)} />
+        {legalOpen && <LegalModal onClose={() => setLegalOpen(false)} />}
       </main>
     );
   }
@@ -673,6 +814,8 @@ function App() {
         </section>
 
         {poolError && <div className="notice error entry-notice">{poolError}</div>}
+        <LegalFooter onOpen={() => setLegalOpen(true)} />
+        {legalOpen && <LegalModal onClose={() => setLegalOpen(false)} />}
       </main>
     );
   }
@@ -1166,6 +1309,8 @@ function App() {
           </div>
         </section>
       </div>
+      <LegalFooter onOpen={() => setLegalOpen(true)} />
+      {legalOpen && <LegalModal onClose={() => setLegalOpen(false)} />}
     </main>
   );
 }
