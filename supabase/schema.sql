@@ -61,6 +61,11 @@ alter table public.bolao_participants enable row level security;
 -- The browser does not query these tables directly. The app server uses
 -- SUPABASE_SERVICE_ROLE_KEY, compares the coordinator token hash, and returns
 -- only the current bolao bundle by code.
+revoke all on public.bolao_pools from anon, authenticated;
+revoke all on public.bolao_participants from anon, authenticated;
+revoke all on function public.set_bolao_updated_at() from public, anon, authenticated;
+
 grant usage on schema public to service_role;
 grant select, insert, update, delete on public.bolao_pools to service_role;
 grant select, insert, update, delete on public.bolao_participants to service_role;
+grant execute on function public.set_bolao_updated_at() to service_role;
