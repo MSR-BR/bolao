@@ -56,9 +56,9 @@ export async function updateSharedPool(code, adminToken, patch) {
   });
 }
 
-export async function addSharedParticipant(code, participant) {
+export async function addSharedParticipant(code, participant, adminToken = "") {
   const normalizedCode = normalizePoolCode(code);
-  return requestJson(`/api/pools/${encodeURIComponent(normalizedCode)}/participants`, {
+  return requestJson(`/api/pools/${encodeURIComponent(normalizedCode)}/participants${adminQuery(adminToken)}`, {
     method: "POST",
     body: JSON.stringify(participant || {}),
   });

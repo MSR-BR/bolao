@@ -313,6 +313,7 @@ function App() {
   const searchWindowLabel = formatSearchDaysLabel(searchDays);
   const searchWindowScope = formatSearchDaysScope(searchDays);
   const searchWindowNotice = formatSearchDaysNotice(searchDays);
+  const statusLabel = betsClosed ? "Palpites fechados" : isCoordinator ? "Aberto" : "Acompanhamento";
   const windowEnd = new Date(now.getTime() + searchDays * 24 * 60 * 60 * 1000);
   const homeTeamLabel = selectedMatch?.home || "Time 1";
   const awayTeamLabel = selectedMatch?.away || "Time 2";
@@ -400,12 +401,12 @@ function App() {
     setPoolNotice("");
 
     try {
-      const storedAdminToken = token || window.localStorage.getItem(adminStorageKey(normalizedCode)) || "";
-      const bundle = await fetchSharedPool(normalizedCode, storedAdminToken);
-      applyPoolBundle(bundle, storedAdminToken);
+      const accessToken = token || "";
+      const bundle = await fetchSharedPool(normalizedCode, accessToken);
+      applyPoolBundle(bundle, accessToken);
       setEntryCode(normalizedCode);
 
-      const nextUrl = makePoolLink(normalizedCode, bundle.isCoordinator ? storedAdminToken : "");
+      const nextUrl = makePoolLink(normalizedCode, bundle.isCoordinator ? accessToken : "");
       window.history.replaceState(null, "", nextUrl);
     } catch (error) {
       if (shouldClearOnError) {
@@ -661,7 +662,7 @@ function App() {
     setPoolError("");
     setParticipantSaving(true);
     try {
-      const bundle = await addSharedParticipant(poolCode, participant);
+      const bundle = await addSharedParticipant(poolCode, participant, adminToken);
       const addedParticipant =
         bundle.participants?.find((item) => item.name === participant.name) || bundle.participants?.at(-1);
       applyPoolBundle(bundle, adminToken, { preserveAccess: true });
@@ -950,7 +951,7 @@ function App() {
         )}
         <div>
           <span>Status</span>
-          <strong>{betsClosed ? "Palpites fechados" : "Aberto"}</strong>
+          <strong>{statusLabel}</strong>
         </div>
       </section>
 
@@ -958,59 +959,68 @@ function App() {
         <section className="panel match-panel">
           <div className="section-title">
             <div>
-              <p className="eyebrow">Próximos {searchWindowLabel}</p>
-              <h2>Jogos importantes</h2>
+              <p className="eyebrow">{isCoordinator ? `Próximos ${searchWindowLabel}` : "Acompanhar"}</p>
+              <h2>{isCoordinator ? "Jogos importantes" : "Jogo escolhido"}</h2>
             </div>
-            <button
-              className="icon-button"
-              type="button"
-              onClick={() => setReloadKey((current) => current + 1)}
-              disabled={matchesLoading}
-              aria-label="Atualizar jogos"
-            >
-              <RefreshCw size={18} />
-            </button>
+            {isCoordinator && (
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setReloadKey((current) => current + 1)}
+                disabled={matchesLoading}
+                aria-label="Atualizar jogos"
+              >
+                <RefreshCw size={18} />
+              </button>
+            )}
           </div>
 
-          <p className="time-window">
-            Janela: agora até{" "}
-            {new Intl.DateTimeFormat("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-            }).format(windowEnd)}
-            .
-          </p>
+          {isCoordinator && (
+            <>
+              <p className="time-window">
+                Janela: agora até{" "}
+                {new Intl.DateTimeFormat("pt-BR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(windowEnd)}
+                .
+              </p>
 
-          <div className="window-picker" aria-label="Janela de busca">
-            <span>Buscar em</span>
-            <div className="segmented-control">
-              {SEARCH_WINDOWS.map((option) => (
-                <button
-                  type="button"
-                  key={option.days}
-                  className={option.days === searchDays ? "active" : ""}
-                  onClick={() => handleSearchDaysChange(option.days)}
-                  aria-pressed={option.days === searchDays}
-                  disabled={!isCoordinator}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
+              <div className="window-picker" aria-label="Janela de busca">
+                <span>Buscar em</span>
+                <div className="segmented-control">
+                  {SEARCH_WINDOWS.map((option) => (
+                    <button
+                      type="button"
+                      key={option.days}
+                      className={option.days === searchDays ? "active" : ""}
+                      onClick={() => handleSearchDaysChange(option.days)}
+                      aria-pressed={option.days === searchDays}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
-          {matchSource && (
+          {!isCoordinator && selectedMatch && (
+            <p className="viewer-note">Este link é somente para acompanhar o bolão. A edição fica no acesso do coordenador.</p>
+          )}
+
+          {isCoordinator && matchSource && (
             <p className="source-pill">
               Dados reais via {matchSource}. A lista considera apenas {searchWindowScope}.
             </p>
           )}
 
-          {matchesLoading && <div className="loading-bar" />}
-          {matchesError && <div className="notice error">{matchesError}</div>}
-          {!matchesError && matchesNotice && <div className="notice">{matchesNotice}</div>}
-          {!matchesLoading && !matchesError && matches.length === 0 && !matchesNotice && (
+          {isCoordinator && matchesLoading && <div className="loading-bar" />}
+          {isCoordinator && matchesError && <div className="notice error">{matchesError}</div>}
+          {isCoordinator && !matchesError && matchesNotice && <div className="notice">{matchesNotice}</div>}
+          {isCoordinator && !matchesLoading && !matchesError && matches.length === 0 && !matchesNotice && (
             <div className="notice">Nenhum jogo encontrado {searchWindowNotice}.</div>
           )}
 
@@ -1057,140 +1067,141 @@ function App() {
           )}
         </section>
 
-        <section className="panel">
-          <div className="section-title">
-            <div>
-              <p className="eyebrow">Palpitar</p>
-              <h2>Participantes e placares</h2>
-            </div>
-            <Users size={22} />
-          </div>
-
-          <form className="bet-form" onSubmit={addParticipant}>
-            <label>
-              Nome
-              <input
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Participante"
-                disabled={participantSaving || betsClosed || !selectedMatch}
-              />
-            </label>
-            <label>
-              <span className="team-label-text">{homeTeamLabel}</span>
-              <input
-                type="number"
-                min="0"
-                max="20"
-                placeholder="0"
-                value={form.homeGoals}
-                onChange={(event) => setForm((current) => ({ ...current, homeGoals: event.target.value }))}
-                disabled={participantSaving || betsClosed || !selectedMatch}
-              />
-            </label>
-            <label>
-              <span className="team-label-text">{awayTeamLabel}</span>
-              <input
-                type="number"
-                min="0"
-                max="20"
-                placeholder="0"
-                value={form.awayGoals}
-                onChange={(event) => setForm((current) => ({ ...current, awayGoals: event.target.value }))}
-                disabled={participantSaving || betsClosed || !selectedMatch}
-              />
-            </label>
-            <button className="icon-action" type="submit" disabled={participantSaving || betsClosed || !selectedMatch}>
-              <Plus size={18} />
-              {participantSaving ? "Adicionando..." : "Adicionar"}
-            </button>
-          </form>
-
-          <button
-            className="close-bets-button inline-close-button"
-            type="button"
-            onClick={closeBets}
-            disabled={!isCoordinator || !selectedMatch || betsClosed || participants.length === 0}
-          >
-            <Lock size={18} />
-            Fechar palpites
-          </button>
-
-          <div
-            className={`participants-table ${PAYMENT_FEATURE_VISIBLE ? "" : "palpites-only"}`}
-            role="table"
-            aria-label="Participantes"
-          >
-            <div className="table-head" role="row">
-              <span>Nome</span>
-              <span>Placar</span>
-              {PAYMENT_FEATURE_VISIBLE && <span>Pago</span>}
-              <span />
-            </div>
-            {participants.map((participant) => (
-              <div className="table-row" role="row" key={participant.id}>
-                <input
-                  value={participant.name}
-                  onChange={(event) => updateParticipant(participant.id, { name: event.target.value }, false)}
-                  onBlur={() => saveParticipantName(participant.id)}
-                  disabled={betsClosed}
-                  aria-label={`Nome de ${participant.name}`}
-                />
-                <div className="score-inputs">
-                  <input
-                    type="number"
-                    min="0"
-                    max="20"
-                    placeholder="0"
-                    value={participant.homeGoals}
-                    onChange={(event) =>
-                      updateParticipant(participant.id, { homeGoals: Number(event.target.value) }, false)
-                    }
-                    onBlur={(event) => saveParticipantScore(participant.id, { homeGoals: event.target.value })}
-                    onKeyDown={blurOnEnter}
-                    disabled={betsClosed}
-                    aria-label={`Gols do mandante para ${participant.name}`}
-                  />
-                  <span>x</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="20"
-                    placeholder="0"
-                    value={participant.awayGoals}
-                    onChange={(event) =>
-                      updateParticipant(participant.id, { awayGoals: Number(event.target.value) }, false)
-                    }
-                    onBlur={(event) => saveParticipantScore(participant.id, { awayGoals: event.target.value })}
-                    onKeyDown={blurOnEnter}
-                    disabled={betsClosed}
-                    aria-label={`Gols do visitante para ${participant.name}`}
-                  />
-                </div>
-                {PAYMENT_FEATURE_VISIBLE && (
-                  <label className="paid-toggle">
-                    <input
-                      type="checkbox"
-                      checked={participant.paid}
-                      onChange={(event) => updateParticipant(participant.id, { paid: event.target.checked })}
-                      disabled={!isCoordinator}
-                    />
-                    <span />
-                  </label>
-                )}
-                <button
-                  className="icon-button danger"
-                  type="button"
-                  onClick={() => removeParticipant(participant.id)}
-                  disabled={betsClosed || participants.length <= 1}
-                  aria-label={`Remover ${participant.name}`}
-                >
-                  <X size={16} />
-                </button>
+        {isCoordinator && (
+          <section className="panel">
+            <div className="section-title">
+              <div>
+                <p className="eyebrow">Palpitar</p>
+                <h2>Participantes e placares</h2>
               </div>
-            ))}
-          </div>
-        </section>
+              <Users size={22} />
+            </div>
+
+            <form className="bet-form" onSubmit={addParticipant}>
+              <label>
+                Nome
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Participante"
+                  disabled={participantSaving || betsClosed || !selectedMatch}
+                />
+              </label>
+              <label>
+                <span className="team-label-text">{homeTeamLabel}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  placeholder="0"
+                  value={form.homeGoals}
+                  onChange={(event) => setForm((current) => ({ ...current, homeGoals: event.target.value }))}
+                  disabled={participantSaving || betsClosed || !selectedMatch}
+                />
+              </label>
+              <label>
+                <span className="team-label-text">{awayTeamLabel}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  placeholder="0"
+                  value={form.awayGoals}
+                  onChange={(event) => setForm((current) => ({ ...current, awayGoals: event.target.value }))}
+                  disabled={participantSaving || betsClosed || !selectedMatch}
+                />
+              </label>
+              <button className="icon-action" type="submit" disabled={participantSaving || betsClosed || !selectedMatch}>
+                <Plus size={18} />
+                {participantSaving ? "Adicionando..." : "Adicionar"}
+              </button>
+            </form>
+
+            <button
+              className="close-bets-button inline-close-button"
+              type="button"
+              onClick={closeBets}
+              disabled={!selectedMatch || betsClosed || participants.length === 0}
+            >
+              <Lock size={18} />
+              Fechar palpites
+            </button>
+
+            <div
+              className={`participants-table ${PAYMENT_FEATURE_VISIBLE ? "" : "palpites-only"}`}
+              role="table"
+              aria-label="Participantes"
+            >
+              <div className="table-head" role="row">
+                <span>Nome</span>
+                <span>Placar</span>
+                {PAYMENT_FEATURE_VISIBLE && <span>Pago</span>}
+                <span />
+              </div>
+              {participants.map((participant) => (
+                <div className="table-row" role="row" key={participant.id}>
+                  <input
+                    value={participant.name}
+                    onChange={(event) => updateParticipant(participant.id, { name: event.target.value }, false)}
+                    onBlur={() => saveParticipantName(participant.id)}
+                    disabled={betsClosed}
+                    aria-label={`Nome de ${participant.name}`}
+                  />
+                  <div className="score-inputs">
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      placeholder="0"
+                      value={participant.homeGoals}
+                      onChange={(event) =>
+                        updateParticipant(participant.id, { homeGoals: Number(event.target.value) }, false)
+                      }
+                      onBlur={(event) => saveParticipantScore(participant.id, { homeGoals: event.target.value })}
+                      onKeyDown={blurOnEnter}
+                      disabled={betsClosed}
+                      aria-label={`Gols do mandante para ${participant.name}`}
+                    />
+                    <span>x</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      placeholder="0"
+                      value={participant.awayGoals}
+                      onChange={(event) =>
+                        updateParticipant(participant.id, { awayGoals: Number(event.target.value) }, false)
+                      }
+                      onBlur={(event) => saveParticipantScore(participant.id, { awayGoals: event.target.value })}
+                      onKeyDown={blurOnEnter}
+                      disabled={betsClosed}
+                      aria-label={`Gols do visitante para ${participant.name}`}
+                    />
+                  </div>
+                  {PAYMENT_FEATURE_VISIBLE && (
+                    <label className="paid-toggle">
+                      <input
+                        type="checkbox"
+                        checked={participant.paid}
+                        onChange={(event) => updateParticipant(participant.id, { paid: event.target.checked })}
+                      />
+                      <span />
+                    </label>
+                  )}
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    onClick={() => removeParticipant(participant.id)}
+                    disabled={betsClosed || participants.length <= 1}
+                    aria-label={`Remover ${participant.name}`}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {PAYMENT_FEATURE_VISIBLE && (
           <section className="panel payment-panel">
@@ -1297,7 +1308,7 @@ function App() {
           <div className="section-title">
             <div>
               <p className="eyebrow">Compartilhar</p>
-              <h2>Código e acesso</h2>
+              <h2>{isCoordinator ? "Código e acesso" : "Compartilhar este bolão"}</h2>
             </div>
             <Send size={22} />
           </div>
@@ -1396,20 +1407,22 @@ function App() {
           {liveError && <div className="notice error">{liveError}</div>}
 
           <div className="live-actions">
-            <button
-              className="primary-action"
-              type="button"
-              onClick={() => setTracking((current) => !current)}
-              disabled={!isCoordinator || !betsClosed || !selectedMatch || liveLoading || matchFinished}
-            >
-              <Timer size={18} />
-              {tracking ? "Pausar" : liveLoading ? "Atualizando" : "Acompanhar"}
-            </button>
+            {isCoordinator && (
+              <button
+                className="primary-action"
+                type="button"
+                onClick={() => setTracking((current) => !current)}
+                disabled={!betsClosed || !selectedMatch || liveLoading || matchFinished}
+              >
+                <Timer size={18} />
+                {tracking ? "Pausar" : liveLoading ? "Atualizando" : "Acompanhar"}
+              </button>
+            )}
             <button
               className="secondary-action"
               type="button"
               onClick={refreshLiveMatch}
-              disabled={!isCoordinator || !betsClosed || !selectedMatch || liveLoading || matchFinished}
+              disabled={!selectedMatch || liveLoading || matchFinished}
             >
               {liveLoading ? "Atualizando" : "Atualizar agora"}
             </button>
@@ -1420,9 +1433,15 @@ function App() {
               <Trophy size={22} />
               <strong>{matchFinished ? "Resultado final" : "Vencedores"}</strong>
             </div>
-            {!matchFinished && <p>Feche os palpites e acompanhe o placar real da API para identificar vencedores.</p>}
-            {matchFinished && winners.length > 0 && (
+            {!matchFinished && isCoordinator && (
+              <p>Feche os palpites e acompanhe o placar real da API para identificar vencedores.</p>
+            )}
+            {!matchFinished && !isCoordinator && <p>Acompanhe o placar e o histograma do bolão por aqui.</p>}
+            {matchFinished && winners.length > 0 && isCoordinator && (
               <p>{winners.map((winner) => winner.name).join(", ")} acertaram o placar exato.</p>
+            )}
+            {matchFinished && winners.length > 0 && !isCoordinator && (
+              <p>{winners.length} palpite{winners.length === 1 ? "" : "s"} acertaram o placar exato.</p>
             )}
             {matchFinished && winners.length === 0 && (
               <p>Ninguém acertou o placar exato.</p>

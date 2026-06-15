@@ -291,6 +291,13 @@ h2 {
   background: #e2f4e8;
 }
 
+.viewer-note {
+  margin: -2px 0 14px;
+  color: #4d5d50;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .notice {
   margin-bottom: 14px;
   color: #495746;

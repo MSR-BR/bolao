@@ -407,7 +407,7 @@ function pickParticipantPatch(body = {}, includeName = true) {
   return patch;
 }
 
-async function addParticipantRecord(code, body) {
+async function addParticipantRecord(code, body, adminToken = "") {
   const normalizedCode = normalizeCode(code);
   const storageMode = isSupabaseConfigured() ? "supabase" : "memoria";
   const pool = storageMode === "supabase" ? await findSupabasePool(normalizedCode) : memoryPools.get(normalizedCode);
@@ -417,6 +417,8 @@ async function addParticipantRecord(code, body) {
     error.statusCode = 404;
     throw error;
   }
+
+  requireCoordinator(pool, adminToken);
 
   if (pool.bets_closed) {
     const error = new Error("As apostas deste bolão já foram fechadas.");
@@ -444,7 +446,7 @@ async function addParticipantRecord(code, body) {
     const now = new Date().toISOString();
     const stored = { ...participant, created_at: now, updated_at: now };
     memoryParticipants.get(pool.id).set(stored.id, stored);
-    return fetchPoolBundle(normalizedCode);
+    return fetchPoolBundle(normalizedCode, adminToken);
   }
 
   await supabaseRest(`/${BOLAO_PARTICIPANTS_TABLE}`, {
@@ -458,7 +460,7 @@ async function addParticipantRecord(code, body) {
   return {
     pool: publicPool(pool, storageMode),
     participants: participants.map(publicParticipant),
-    isCoordinator: false,
+    isCoordinator: true,
   };
 }
 
@@ -473,7 +475,7 @@ async function updateParticipantRecord(code, participantId, adminToken, body) {
     throw error;
   }
 
-  if (pool.bets_closed || Object.hasOwn(body, "paid")) requireCoordinator(pool, adminToken);
+  requireCoordinator(pool, adminToken);
 
   const patch = pickParticipantPatch(body);
   if (Object.hasOwn(patch, "name") && !patch.name) {
@@ -524,7 +526,7 @@ async function deleteParticipantRecord(code, participantId, adminToken) {
     throw error;
   }
 
-  if (pool.bets_closed) requireCoordinator(pool, adminToken);
+  requireCoordinator(pool, adminToken);
 
   if (storageMode === "memoria") {
     memoryParticipants.get(pool.id)?.delete(participantId);
@@ -760,7 +762,15 @@ export async function handleApiRequest(request, response) {
     const participantCollectionMatch = requestUrl.pathname.match(/^\/api\/pools\/([^/]+)\/participants$/);
     if (participantCollectionMatch && request.method === "POST") {
       const body = await readRequestBody(request);
-      json(response, 201, await addParticipantRecord(decodeURIComponent(participantCollectionMatch[1]), body));
+      json(
+        response,
+        201,
+        await addParticipantRecord(
+          decodeURIComponent(participantCollectionMatch[1]),
+          body,
+          requestUrl.searchParams.get("admin") || "",
+        ),
+      );
       return true;
     }
 
