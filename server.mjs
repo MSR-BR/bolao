@@ -42,6 +42,34 @@ const STATUS_LABELS = {
 const memoryPools = new Map();
 const memoryParticipants = new Map();
 
+const POOL_SELECT_COLUMNS = [
+  "id",
+  "code",
+  "title",
+  "admin_token_hash",
+  "search_days",
+  "selected_match_id",
+  "selected_match",
+  "live_match",
+  "bets_closed",
+  "bet_value",
+  "pix_key",
+  "merchant_name",
+  "created_at",
+  "updated_at",
+].join(",");
+
+const PARTICIPANT_SELECT_COLUMNS = [
+  "id",
+  "pool_id",
+  "name",
+  "home_goals",
+  "away_goals",
+  "paid",
+  "created_at",
+  "updated_at",
+].join(",");
+
 function loadEnv() {
   const envPath = join(root, ".env");
   if (!existsSync(envPath)) return;
@@ -208,7 +236,7 @@ async function supabaseRest(path, options = {}) {
 
 async function findSupabasePool(code) {
   const rows = await supabaseRest(
-    `/bolao_pools?code=eq.${encodeURIComponent(code)}&select=*&limit=1`,
+    `/bolao_pools?code=eq.${encodeURIComponent(code)}&select=${POOL_SELECT_COLUMNS}&limit=1`,
     { method: "GET", headers: { Prefer: "" } },
   );
 
@@ -217,7 +245,7 @@ async function findSupabasePool(code) {
 
 async function listSupabaseParticipants(poolId) {
   const rows = await supabaseRest(
-    `/bolao_participants?pool_id=eq.${encodeURIComponent(poolId)}&select=*&order=created_at.asc`,
+    `/bolao_participants?pool_id=eq.${encodeURIComponent(poolId)}&select=${PARTICIPANT_SELECT_COLUMNS}&order=created_at.asc`,
     { method: "GET", headers: { Prefer: "" } },
   );
 
@@ -285,7 +313,7 @@ async function createPoolRecord(payload = {}) {
     }
 
     try {
-      const rows = await supabaseRest("/bolao_pools", {
+      const rows = await supabaseRest(`/bolao_pools?select=${POOL_SELECT_COLUMNS}`, {
         method: "POST",
         body: JSON.stringify([{ code, ...basePool }]),
       });
@@ -352,10 +380,17 @@ async function updatePoolRecord(code, adminToken, body) {
 
   await supabaseRest(`/bolao_pools?id=eq.${encodeURIComponent(pool.id)}`, {
     method: "PATCH",
+    headers: { Prefer: "return=minimal" },
     body: JSON.stringify(patch),
   });
 
-  return fetchPoolBundle(normalizedCode, adminToken);
+  const participants = await listSupabaseParticipants(pool.id);
+
+  return {
+    pool: publicPool({ ...pool, ...patch }, storageMode),
+    participants: participants.map(publicParticipant),
+    isCoordinator: true,
+  };
 }
 
 function pickParticipantPatch(body = {}, includeName = true) {
@@ -412,10 +447,17 @@ async function addParticipantRecord(code, body) {
 
   await supabaseRest("/bolao_participants", {
     method: "POST",
+    headers: { Prefer: "return=minimal" },
     body: JSON.stringify([participant]),
   });
 
-  return fetchPoolBundle(normalizedCode);
+  const participants = await listSupabaseParticipants(pool.id);
+
+  return {
+    pool: publicPool(pool, storageMode),
+    participants: participants.map(publicParticipant),
+    isCoordinator: false,
+  };
 }
 
 async function updateParticipantRecord(code, participantId, adminToken, body) {
@@ -455,11 +497,18 @@ async function updateParticipantRecord(code, participantId, adminToken, body) {
     `/bolao_participants?id=eq.${encodeURIComponent(participantId)}&pool_id=eq.${encodeURIComponent(pool.id)}`,
     {
       method: "PATCH",
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify(patch),
     },
   );
 
-  return fetchPoolBundle(normalizedCode, adminToken);
+  const participants = await listSupabaseParticipants(pool.id);
+
+  return {
+    pool: publicPool(pool, storageMode),
+    participants: participants.map(publicParticipant),
+    isCoordinator: Boolean(adminToken && pool.admin_token_hash === hashToken(adminToken)),
+  };
 }
 
 async function deleteParticipantRecord(code, participantId, adminToken) {
@@ -482,10 +531,16 @@ async function deleteParticipantRecord(code, participantId, adminToken) {
 
   await supabaseRest(
     `/bolao_participants?id=eq.${encodeURIComponent(participantId)}&pool_id=eq.${encodeURIComponent(pool.id)}`,
-    { method: "DELETE" },
+    { method: "DELETE", headers: { Prefer: "return=minimal" } },
   );
 
-  return fetchPoolBundle(normalizedCode, adminToken);
+  const participants = await listSupabaseParticipants(pool.id);
+
+  return {
+    pool: publicPool(pool, storageMode),
+    participants: participants.map(publicParticipant),
+    isCoordinator: Boolean(adminToken && pool.admin_token_hash === hashToken(adminToken)),
+  };
 }
 
 function dateKey(date) {

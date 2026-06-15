@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import {
   BarChart3,
@@ -67,6 +67,19 @@ function makePoolLink(code, adminToken = "") {
 function makeBetDescription(match, participant) {
   if (!match || !participant) return "Bolao de futebol";
   return `${participant.name}: ${match.home} ${participant.homeGoals}x${participant.awayGoals} ${match.away}`;
+}
+
+function liveMatchSignature(match) {
+  if (!match) return "";
+  const minute = Number.isFinite(Number(match.minute)) ? Number(match.minute) : "";
+  return [
+    match.id || match.providerId || "",
+    match.statusKey || "",
+    Number(match.homeGoals || 0),
+    Number(match.awayGoals || 0),
+    minute,
+    match.isFinished ? "finished" : "",
+  ].join("|");
 }
 
 function dataUrlToFile(dataUrl, filename) {
@@ -216,6 +229,7 @@ function LegalModal({ onClose }) {
 
 function App() {
   const now = useNow();
+  const lastSavedLiveSignatureRef = useRef("");
   const [poolCode, setPoolCode] = useState("");
   const [entryCode, setEntryCode] = useState("");
   const [adminToken, setAdminToken] = useState("");
@@ -317,8 +331,10 @@ function App() {
     setBetValue(Number(nextPool.betValue || 0));
     setPixKey(nextPool.pixKey || "");
     setMerchantName(nextPool.merchantName || "");
+    const nextLiveMatch = nextPool.liveMatch || nextPool.selectedMatch || null;
     setParticipants(bundle.participants || []);
-    setLiveMatch(nextPool.liveMatch || nextPool.selectedMatch || null);
+    setLiveMatch(nextLiveMatch);
+    lastSavedLiveSignatureRef.current = liveMatchSignature(nextLiveMatch);
     if (!preserveAccess) setIsCoordinator(Boolean(bundle.isCoordinator));
     setPoolError("");
 
@@ -424,6 +440,15 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!initialPoolChecked || !poolCode || !isCoordinator || selectedMatchId) {
+      setMatches([]);
+      setMatchesLoading(false);
+      setMatchesError("");
+      setMatchesNotice("");
+      setMatchSource("");
+      return undefined;
+    }
+
     let canceled = false;
     setMatchesLoading(true);
     setMatches([]);
@@ -450,7 +475,7 @@ function App() {
     return () => {
       canceled = true;
     };
-  }, [reloadKey, searchDays]);
+  }, [initialPoolChecked, isCoordinator, poolCode, reloadKey, searchDays, selectedMatchId]);
 
   const refreshLiveMatch = useCallback(async () => {
     if (!selectedMatch) return;
@@ -458,9 +483,11 @@ function App() {
     setLiveLoading(true);
     try {
       const nextLiveMatch = await fetchMatchStatus(selectedMatch.id);
+      const nextLiveSignature = liveMatchSignature(nextLiveMatch);
       setLiveMatch(nextLiveMatch);
       setLiveError("");
-      if (poolCode && isCoordinator) {
+      if (poolCode && isCoordinator && nextLiveSignature !== lastSavedLiveSignatureRef.current) {
+        lastSavedLiveSignatureRef.current = nextLiveSignature;
         updateSharedPool(poolCode, adminToken, { liveMatch: nextLiveMatch }).catch(() => {});
       }
       if (nextLiveMatch.isFinished) setTracking(false);
@@ -475,7 +502,7 @@ function App() {
     if (!tracking || !selectedMatch || matchFinished) return undefined;
 
     refreshLiveMatch();
-    const interval = window.setInterval(refreshLiveMatch, 30_000);
+    const interval = window.setInterval(refreshLiveMatch, 60_000);
 
     return () => window.clearInterval(interval);
   }, [matchFinished, refreshLiveMatch, selectedMatch, tracking]);
@@ -623,6 +650,25 @@ function App() {
     } catch (error) {
       setPoolError(error.message);
     }
+  }
+
+  async function saveParticipantScore(id, patch = {}) {
+    const participant = participants.find((item) => item.id === id);
+    if (!participant || !poolCode) return;
+
+    try {
+      const bundle = await updateSharedParticipant(poolCode, id, adminToken, {
+        homeGoals: Number(Object.hasOwn(patch, "homeGoals") ? patch.homeGoals : participant.homeGoals || 0),
+        awayGoals: Number(Object.hasOwn(patch, "awayGoals") ? patch.awayGoals : participant.awayGoals || 0),
+      });
+      applyPoolBundle(bundle, adminToken, { preserveAccess: true });
+    } catch (error) {
+      setPoolError(error.message);
+    }
+  }
+
+  function blurOnEnter(event) {
+    if (event.key === "Enter") event.currentTarget.blur();
   }
 
   async function removeParticipant(id) {
@@ -1042,7 +1088,11 @@ function App() {
                     min="0"
                     max="20"
                     value={participant.homeGoals}
-                    onChange={(event) => updateParticipant(participant.id, { homeGoals: Number(event.target.value) })}
+                    onChange={(event) =>
+                      updateParticipant(participant.id, { homeGoals: Number(event.target.value) }, false)
+                    }
+                    onBlur={(event) => saveParticipantScore(participant.id, { homeGoals: event.target.value })}
+                    onKeyDown={blurOnEnter}
                     disabled={betsClosed}
                     aria-label={`Gols do mandante para ${participant.name}`}
                   />
@@ -1052,7 +1102,11 @@ function App() {
                     min="0"
                     max="20"
                     value={participant.awayGoals}
-                    onChange={(event) => updateParticipant(participant.id, { awayGoals: Number(event.target.value) })}
+                    onChange={(event) =>
+                      updateParticipant(participant.id, { awayGoals: Number(event.target.value) }, false)
+                    }
+                    onBlur={(event) => saveParticipantScore(participant.id, { awayGoals: event.target.value })}
+                    onKeyDown={blurOnEnter}
                     disabled={betsClosed}
                     aria-label={`Gols do visitante para ${participant.name}`}
                   />

@@ -31,7 +31,7 @@ create table if not exists public.bolao_participants (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists bolao_pools_code_idx on public.bolao_pools (code);
+-- The unique constraint on code already creates the lookup index used by the app.
 create index if not exists bolao_participants_pool_created_idx
   on public.bolao_participants (pool_id, created_at);
 
