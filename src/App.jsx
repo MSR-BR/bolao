@@ -35,6 +35,7 @@ const SEARCH_WINDOWS = [
 ];
 const PAYMENT_FEATURE_VISIBLE = false;
 const TERMS_UPDATED_AT = "junho de 2026";
+const EMPTY_BET_FORM = { name: "", homeGoals: 0, awayGoals: 0 };
 
 function scoreKey(homeGoals, awayGoals) {
   return `${homeGoals} x ${awayGoals}`;
@@ -250,7 +251,8 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [selectedMatchData, setSelectedMatchData] = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [form, setForm] = useState({ name: "", homeGoals: 1, awayGoals: 0 });
+  const [form, setForm] = useState(EMPTY_BET_FORM);
+  const [participantSaving, setParticipantSaving] = useState(false);
   const [betValue, setBetValue] = useState(20);
   const [pixKey, setPixKey] = useState("");
   const [merchantName, setMerchantName] = useState("");
@@ -317,10 +319,42 @@ function App() {
   const participantLink = poolCode ? makePoolLink(poolCode) : "";
   const coordinatorLink = poolCode && adminToken ? makePoolLink(poolCode, adminToken) : "";
 
+  function resetPoolState(options = {}) {
+    const hasEntryCode = Object.hasOwn(options, "entryCode");
+
+    setPoolCode("");
+    setAdminToken("");
+    setIsCoordinator(false);
+    setParticipants([]);
+    setSelectedMatchId("");
+    setSelectedMatchData(null);
+    setLiveMatch(null);
+    setBetsClosed(false);
+    setTracking(false);
+    setSelectedParticipantId("");
+    setForm(EMPTY_BET_FORM);
+    setParticipantSaving(false);
+    setPixPayload("");
+    setQrCodeUrl("");
+    setCopied(false);
+    setPixSendStatus("");
+    setPoolNotice("");
+    setPoolError("");
+    setShareCopied("");
+    setMatches([]);
+    setMatchesLoading(false);
+    setMatchesError("");
+    setMatchesNotice("");
+    setMatchSource("");
+    lastSavedLiveSignatureRef.current = "";
+
+    if (hasEntryCode) setEntryCode(options.entryCode);
+  }
+
   function applyPoolBundle(bundle, token = "", options = {}) {
     const nextPool = bundle.pool;
     const nextCode = nextPool.code;
-    const nextAdminToken = token || adminToken;
+    const nextAdminToken = token || (options.preserveAccess ? adminToken : "");
     const preserveAccess = Boolean(options.preserveAccess);
 
     setPoolCode(nextCode);
@@ -335,7 +369,12 @@ function App() {
     setParticipants(bundle.participants || []);
     setLiveMatch(nextLiveMatch);
     lastSavedLiveSignatureRef.current = liveMatchSignature(nextLiveMatch);
-    if (!preserveAccess) setIsCoordinator(Boolean(bundle.isCoordinator));
+    if (!preserveAccess) {
+      const nextIsCoordinator = Boolean(bundle.isCoordinator);
+      setIsCoordinator(nextIsCoordinator);
+
+      if (!nextIsCoordinator) setAdminToken("");
+    }
     setPoolError("");
 
     if (!preserveAccess && nextAdminToken && bundle.isCoordinator) {
@@ -344,9 +383,17 @@ function App() {
     }
   }
 
-  async function loadPool(code, token = "") {
+  async function loadPool(code, token = "", options = {}) {
     const normalizedCode = normalizePoolCode(code);
     if (!normalizedCode) return;
+    const currentCode = normalizePoolCode(poolCode);
+    const isDifferentPool = Boolean(currentCode && currentCode !== normalizedCode);
+    const shouldClearBeforeLoad = Boolean(options.clearBeforeLoad || isDifferentPool);
+    const shouldClearOnError = Boolean(options.clearOnError || shouldClearBeforeLoad);
+
+    if (shouldClearBeforeLoad) {
+      resetPoolState({ entryCode: normalizedCode });
+    }
 
     setPoolLoading(true);
     setPoolError("");
@@ -361,6 +408,9 @@ function App() {
       const nextUrl = makePoolLink(normalizedCode, bundle.isCoordinator ? storedAdminToken : "");
       window.history.replaceState(null, "", nextUrl);
     } catch (error) {
+      if (shouldClearOnError) {
+        resetPoolState({ entryCode: normalizedCode });
+      }
       setPoolError(error.message);
     } finally {
       setPoolLoading(false);
@@ -389,20 +439,11 @@ function App() {
 
   function joinPool(event) {
     event.preventDefault();
-    loadPool(entryCode);
+    loadPool(entryCode, "", { clearOnError: true });
   }
 
   function leavePool() {
-    setPoolCode("");
-    setAdminToken("");
-    setIsCoordinator(false);
-    setParticipants([]);
-    setSelectedMatchId("");
-    setSelectedMatchData(null);
-    setLiveMatch(null);
-    setBetsClosed(false);
-    setPoolNotice("");
-    setPoolError("");
+    resetPoolState();
     window.history.replaceState(null, "", window.location.pathname);
   }
 
@@ -431,7 +472,7 @@ function App() {
     const adminFromUrl = params.get("admin") || "";
 
     if (codeFromUrl) {
-      loadPool(codeFromUrl, adminFromUrl);
+      loadPool(codeFromUrl, adminFromUrl, { clearOnError: true });
     } else {
       setInitialPoolChecked(true);
     }
@@ -609,7 +650,7 @@ function App() {
   async function addParticipant(event) {
     event.preventDefault();
     const trimmedName = form.name.trim();
-    if (!trimmedName || !poolCode || !selectedMatch || betsClosed) return;
+    if (!trimmedName || !poolCode || !selectedMatch || betsClosed || participantSaving) return;
 
     const participant = {
       name: trimmedName,
@@ -618,15 +659,18 @@ function App() {
     };
 
     setPoolError("");
+    setParticipantSaving(true);
     try {
       const bundle = await addSharedParticipant(poolCode, participant);
       const addedParticipant =
         bundle.participants?.find((item) => item.name === participant.name) || bundle.participants?.at(-1);
       applyPoolBundle(bundle, adminToken, { preserveAccess: true });
       setSelectedParticipantId(addedParticipant?.id || "");
-      setForm({ name: "", homeGoals: 1, awayGoals: 0 });
+      setForm(EMPTY_BET_FORM);
     } catch (error) {
       setPoolError(error.message);
+    } finally {
+      setParticipantSaving(false);
     }
   }
 
@@ -1029,7 +1073,7 @@ function App() {
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                 placeholder="Participante"
-                disabled={betsClosed || !selectedMatch}
+                disabled={participantSaving || betsClosed || !selectedMatch}
               />
             </label>
             <label>
@@ -1038,9 +1082,10 @@ function App() {
                 type="number"
                 min="0"
                 max="20"
+                placeholder="0"
                 value={form.homeGoals}
                 onChange={(event) => setForm((current) => ({ ...current, homeGoals: event.target.value }))}
-                disabled={betsClosed || !selectedMatch}
+                disabled={participantSaving || betsClosed || !selectedMatch}
               />
             </label>
             <label>
@@ -1049,14 +1094,15 @@ function App() {
                 type="number"
                 min="0"
                 max="20"
+                placeholder="0"
                 value={form.awayGoals}
                 onChange={(event) => setForm((current) => ({ ...current, awayGoals: event.target.value }))}
-                disabled={betsClosed || !selectedMatch}
+                disabled={participantSaving || betsClosed || !selectedMatch}
               />
             </label>
-            <button className="icon-action" type="submit" disabled={betsClosed || !selectedMatch}>
+            <button className="icon-action" type="submit" disabled={participantSaving || betsClosed || !selectedMatch}>
               <Plus size={18} />
-              Adicionar
+              {participantSaving ? "Adicionando..." : "Adicionar"}
             </button>
           </form>
 
@@ -1095,6 +1141,7 @@ function App() {
                     type="number"
                     min="0"
                     max="20"
+                    placeholder="0"
                     value={participant.homeGoals}
                     onChange={(event) =>
                       updateParticipant(participant.id, { homeGoals: Number(event.target.value) }, false)
@@ -1109,6 +1156,7 @@ function App() {
                     type="number"
                     min="0"
                     max="20"
+                    placeholder="0"
                     value={participant.awayGoals}
                     onChange={(event) =>
                       updateParticipant(participant.id, { awayGoals: Number(event.target.value) }, false)
