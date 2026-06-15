@@ -3,7 +3,7 @@
 
 create extension if not exists pgcrypto;
 
-create table if not exists public.bolao_pools (
+create table if not exists public.app_bolao_pools (
   id uuid primary key default gen_random_uuid(),
   code text not null unique check (code ~ '^BOLAO-[A-Z0-9]{5}$'),
   title text not null default 'Bolão Fácil',
@@ -20,9 +20,9 @@ create table if not exists public.bolao_pools (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.bolao_participants (
+create table if not exists public.app_bolao_participants (
   id uuid primary key default gen_random_uuid(),
-  pool_id uuid not null references public.bolao_pools(id) on delete cascade,
+  pool_id uuid not null references public.app_bolao_pools(id) on delete cascade,
   name text not null,
   home_goals integer not null default 0 check (home_goals between 0 and 20),
   away_goals integer not null default 0 check (away_goals between 0 and 20),
@@ -32,10 +32,10 @@ create table if not exists public.bolao_participants (
 );
 
 -- The unique constraint on code already creates the lookup index used by the app.
-create index if not exists bolao_participants_pool_created_idx
-  on public.bolao_participants (pool_id, created_at);
+create index if not exists app_bolao_participants_pool_created_idx
+  on public.app_bolao_participants (pool_id, created_at);
 
-create or replace function public.set_bolao_updated_at()
+create or replace function public.set_app_bolao_updated_at()
 returns trigger
 language plpgsql
 as $$
@@ -45,27 +45,27 @@ begin
 end;
 $$;
 
-drop trigger if exists set_bolao_pools_updated_at on public.bolao_pools;
-create trigger set_bolao_pools_updated_at
-before update on public.bolao_pools
-for each row execute function public.set_bolao_updated_at();
+drop trigger if exists set_app_bolao_pools_updated_at on public.app_bolao_pools;
+create trigger set_app_bolao_pools_updated_at
+before update on public.app_bolao_pools
+for each row execute function public.set_app_bolao_updated_at();
 
-drop trigger if exists set_bolao_participants_updated_at on public.bolao_participants;
-create trigger set_bolao_participants_updated_at
-before update on public.bolao_participants
-for each row execute function public.set_bolao_updated_at();
+drop trigger if exists set_app_bolao_participants_updated_at on public.app_bolao_participants;
+create trigger set_app_bolao_participants_updated_at
+before update on public.app_bolao_participants
+for each row execute function public.set_app_bolao_updated_at();
 
-alter table public.bolao_pools enable row level security;
-alter table public.bolao_participants enable row level security;
+alter table public.app_bolao_pools enable row level security;
+alter table public.app_bolao_participants enable row level security;
 
 -- The browser does not query these tables directly. The app server uses
 -- SUPABASE_SERVICE_ROLE_KEY, compares the coordinator token hash, and returns
 -- only the current bolao bundle by code.
-revoke all on public.bolao_pools from anon, authenticated;
-revoke all on public.bolao_participants from anon, authenticated;
-revoke all on function public.set_bolao_updated_at() from public, anon, authenticated;
+revoke all on public.app_bolao_pools from anon, authenticated;
+revoke all on public.app_bolao_participants from anon, authenticated;
+revoke all on function public.set_app_bolao_updated_at() from public, anon, authenticated;
 
 grant usage on schema public to service_role;
-grant select, insert, update, delete on public.bolao_pools to service_role;
-grant select, insert, update, delete on public.bolao_participants to service_role;
-grant execute on function public.set_bolao_updated_at() to service_role;
+grant select, insert, update, delete on public.app_bolao_pools to service_role;
+grant select, insert, update, delete on public.app_bolao_participants to service_role;
+grant execute on function public.set_app_bolao_updated_at() to service_role;

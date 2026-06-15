@@ -41,6 +41,8 @@ const STATUS_LABELS = {
 
 const memoryPools = new Map();
 const memoryParticipants = new Map();
+const BOLAO_POOLS_TABLE = "app_bolao_pools";
+const BOLAO_PARTICIPANTS_TABLE = "app_bolao_participants";
 
 const POOL_SELECT_COLUMNS = [
   "id",
@@ -236,7 +238,7 @@ async function supabaseRest(path, options = {}) {
 
 async function findSupabasePool(code) {
   const rows = await supabaseRest(
-    `/bolao_pools?code=eq.${encodeURIComponent(code)}&select=${POOL_SELECT_COLUMNS}&limit=1`,
+    `/${BOLAO_POOLS_TABLE}?code=eq.${encodeURIComponent(code)}&select=${POOL_SELECT_COLUMNS}&limit=1`,
     { method: "GET", headers: { Prefer: "" } },
   );
 
@@ -245,7 +247,7 @@ async function findSupabasePool(code) {
 
 async function listSupabaseParticipants(poolId) {
   const rows = await supabaseRest(
-    `/bolao_participants?pool_id=eq.${encodeURIComponent(poolId)}&select=${PARTICIPANT_SELECT_COLUMNS}&order=created_at.asc`,
+    `/${BOLAO_PARTICIPANTS_TABLE}?pool_id=eq.${encodeURIComponent(poolId)}&select=${PARTICIPANT_SELECT_COLUMNS}&order=created_at.asc`,
     { method: "GET", headers: { Prefer: "" } },
   );
 
@@ -313,7 +315,7 @@ async function createPoolRecord(payload = {}) {
     }
 
     try {
-      const rows = await supabaseRest(`/bolao_pools?select=${POOL_SELECT_COLUMNS}`, {
+      const rows = await supabaseRest(`/${BOLAO_POOLS_TABLE}?select=${POOL_SELECT_COLUMNS}`, {
         method: "POST",
         body: JSON.stringify([{ code, ...basePool }]),
       });
@@ -378,7 +380,7 @@ async function updatePoolRecord(code, adminToken, body) {
     return fetchPoolBundle(normalizedCode, adminToken);
   }
 
-  await supabaseRest(`/bolao_pools?id=eq.${encodeURIComponent(pool.id)}`, {
+  await supabaseRest(`/${BOLAO_POOLS_TABLE}?id=eq.${encodeURIComponent(pool.id)}`, {
     method: "PATCH",
     headers: { Prefer: "return=minimal" },
     body: JSON.stringify(patch),
@@ -445,7 +447,7 @@ async function addParticipantRecord(code, body) {
     return fetchPoolBundle(normalizedCode);
   }
 
-  await supabaseRest("/bolao_participants", {
+  await supabaseRest(`/${BOLAO_PARTICIPANTS_TABLE}`, {
     method: "POST",
     headers: { Prefer: "return=minimal" },
     body: JSON.stringify([participant]),
@@ -494,7 +496,7 @@ async function updateParticipantRecord(code, participantId, adminToken, body) {
   }
 
   await supabaseRest(
-    `/bolao_participants?id=eq.${encodeURIComponent(participantId)}&pool_id=eq.${encodeURIComponent(pool.id)}`,
+    `/${BOLAO_PARTICIPANTS_TABLE}?id=eq.${encodeURIComponent(participantId)}&pool_id=eq.${encodeURIComponent(pool.id)}`,
     {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
@@ -530,7 +532,7 @@ async function deleteParticipantRecord(code, participantId, adminToken) {
   }
 
   await supabaseRest(
-    `/bolao_participants?id=eq.${encodeURIComponent(participantId)}&pool_id=eq.${encodeURIComponent(pool.id)}`,
+    `/${BOLAO_PARTICIPANTS_TABLE}?id=eq.${encodeURIComponent(participantId)}&pool_id=eq.${encodeURIComponent(pool.id)}`,
     { method: "DELETE", headers: { Prefer: "return=minimal" } },
   );
 

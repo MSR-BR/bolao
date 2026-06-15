@@ -27,7 +27,7 @@ Sem `SUPABASE_URL` e uma chave server-side do Supabase, o servidor guarda os bol
 - `PATCH /api/pools/:code?admin=...` salva jogo escolhido, janela, fechamento dos palpites e outros metadados do bolão.
 - `POST/PATCH/DELETE /api/pools/:code/participants` gerencia participantes e palpites.
 - O arquivo `src/pix.js` permanece no código para uma possível feature futura, mas a interface atual não apresenta Pix ou pagamento.
-- O SQL inicial do Supabase está em `supabase/schema.sql`.
+- O SQL inicial do Supabase está em `supabase/schema.sql`, usando o prefixo `app_bolao_` para conviver com outros pilotos no mesmo projeto Supabase.
 - Para produção, valide regras legais, regulatórias, de privacidade e do provedor de dados antes de uso público.
 
 ## Publicar
@@ -47,7 +47,7 @@ git push -u origin main
 
 1. Crie ou selecione um projeto no Supabase.
 2. Abra o SQL Editor e rode o arquivo `supabase/schema.sql`.
-3. Confirme que as tabelas `bolao_pools` e `bolao_participants` aparecem em Table Editor.
+3. Confirme que as tabelas `app_bolao_pools` e `app_bolao_participants` aparecem em Table Editor.
 4. Em Project Settings > API Keys, copie:
    - Project URL
    - Secret key (`sb_secret_...`) ou, se estiver usando chaves legadas, `service_role`
