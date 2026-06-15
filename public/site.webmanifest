@@ -1,0 +1,17 @@
+{
+  "name": "Bolao Facil",
+  "short_name": "Bolao Facil",
+  "description": "App web para organizar boloes privados de futebol e acompanhar palpites.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f7ef",
+  "theme_color": "#0e7a4f",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}

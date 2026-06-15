@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Bolao Facil">
+  <rect width="1200" height="630" fill="#f3f7ef"/>
+  <rect x="72" y="72" width="1056" height="486" rx="28" fill="#ffffff" stroke="#d5dfcf" stroke-width="3"/>
+  <circle cx="910" cy="315" r="128" fill="#0f2a18"/>
+  <circle cx="910" cy="315" r="96" fill="#f6fbf3"/>
+  <path d="M910 219v192M814 315h192" stroke="#d9e7d2" stroke-width="10"/>
+  <path d="M858 271h104v38h-67v50h-37z" fill="#2f7d4b"/>
+  <path d="M900 304h61v38h-61z" fill="#0f2a18"/>
+  <text x="122" y="172" fill="#657366" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800" letter-spacing="3">BOLAO DE FUTEBOL</text>
+  <text x="122" y="278" fill="#112018" font-family="Inter, Arial, sans-serif" font-size="104" font-weight="900">Bolao Facil</text>
+  <text x="122" y="355" fill="#34463b" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="700">Palpites privados, histograma e placar ao vivo.</text>
+  <rect x="122" y="416" width="430" height="74" rx="18" fill="#dff1e5"/>
+  <text x="154" y="464" fill="#194a2e" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">Criar bolao com codigo</text>
+</svg>
