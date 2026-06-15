@@ -460,6 +460,11 @@ button:focus-visible {
   grid-template-columns: minmax(0, 1fr) 138px 64px 38px;
 }
 
+.participants-table.palpites-only .table-head,
+.participants-table.palpites-only .table-row {
+  grid-template-columns: minmax(0, 1fr) 138px 38px;
+}
+
 .table-head {
   padding: 10px 12px;
   color: #657468;
@@ -1005,6 +1010,11 @@ button:focus-visible {
     grid-template-columns: minmax(90px, 1fr) 112px 52px 34px;
     gap: 6px;
     padding-inline: 8px;
+  }
+
+  .participants-table.palpites-only .table-head,
+  .participants-table.palpites-only .table-row {
+    grid-template-columns: minmax(90px, 1fr) 112px 34px;
   }
 
   .score-inputs {

@@ -1,6 +1,6 @@
 # Bolão Fácil
 
-App web para organizar bolões de futebol compartilháveis por código, com jogos importantes nos próximos 1, 3 ou 7 dias, apostas por placar, Pix copia e cola com QR Code, envio das informações ao apostador, histograma de palpites e acompanhamento de resultado.
+App web para organizar bolões de futebol compartilháveis por código, com jogos importantes nos próximos 1, 3 ou 7 dias, palpites por placar, histograma de palpites e acompanhamento de resultado. A interface atual não gerencia pagamentos, valores, Pix ou prêmios.
 
 ## Rodar localmente
 
@@ -24,11 +24,11 @@ Sem `SUPABASE_URL` e uma chave server-side do Supabase, o servidor guarda os bol
 - `GET /api/matches/:id` atualiza status, minuto e placar da partida selecionada.
 - `POST /api/pools` cria um bolão compartilhável com código público e token secreto de coordenador.
 - `GET /api/pools/:code` abre o bolão pelo código. Com `?admin=...`, abre em modo coordenador.
-- `PATCH /api/pools/:code?admin=...` salva jogo escolhido, Pix, valor, janela e fechamento das apostas.
+- `PATCH /api/pools/:code?admin=...` salva jogo escolhido, janela, fechamento dos palpites e outros metadados do bolão.
 - `POST/PATCH/DELETE /api/pools/:code/participants` gerencia participantes e palpites.
-- O arquivo `src/pix.js` gera o BR Code Pix estático com valor, chave, descrição da aposta e CRC16.
+- O arquivo `src/pix.js` permanece no código para uma possível feature futura, mas a interface atual não apresenta Pix ou pagamento.
 - O SQL inicial do Supabase está em `supabase/schema.sql`.
-- Para produção, valide regras de Pix, limites de descrição e política do provedor de pagamento antes de receber valores reais.
+- Para produção, valide regras legais, regulatórias, de privacidade e do provedor de dados antes de uso público.
 
 ## Publicar
 
@@ -85,5 +85,5 @@ SUPABASE_SECRET_KEY=...
 ## Observacoes
 
 - A cobertura depende das competicoes disponíveis no provedor escolhido.
-- O Pix ainda nao confirma pagamento automaticamente; ele gera o QR Code/copia e cola e prepara o compartilhamento das informacoes para o apostador.
-- Guarde o link de edição do organizador. O link de acompanhamento abre apenas o bolão para apostar e acompanhar.
+- A interface atual não confirma, coleta, gera ou gerencia pagamentos.
+- Guarde o link de edição do organizador. O link de acompanhamento abre apenas o bolão para palpitar e acompanhar.
