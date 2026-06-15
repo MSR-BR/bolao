@@ -65,7 +65,14 @@ Depois de salvar o `.env`, reinicie o servidor local. A rota `GET /api/health` d
 
 ### Vercel
 
-O frontend Vite pode ser publicado pela Vercel a partir do GitHub, mas as rotas `/api/*` ainda vivem no `server.mjs` local. Antes do deploy final na Vercel, mova essas rotas para Vercel Functions ou troque para uma hospedagem que rode o servidor Node completo.
+O frontend Vite pode ser publicado pela Vercel a partir do GitHub. As rotas `/api/*` rodam pela Vercel Function `api/[...path].js`, reaproveitando a mesma lógica de `server.mjs`.
+
+No painel da Vercel:
+
+1. Importe o repositório `MSR-BR/bolao`.
+2. Confira se o build command é `npm run build`.
+3. Confira se o output directory é `dist`.
+4. Configure as variáveis abaixo em Environment Variables.
 
 Variáveis necessárias no projeto Vercel:
 

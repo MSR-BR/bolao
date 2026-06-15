@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer as createViteServer } from "vite";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const isProduction = process.env.NODE_ENV === "production";
@@ -660,15 +659,7 @@ function serveProductionAsset(requestUrl, response) {
 
 loadEnv();
 
-const vite = isProduction
-  ? null
-  : await createViteServer({
-      root,
-      appType: "spa",
-      server: { middlewareMode: true },
-    });
-
-const server = createServer(async (request, response) => {
+export async function handleApiRequest(request, response) {
   const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
   try {
@@ -680,13 +671,13 @@ const server = createServer(async (request, response) => {
         hasSupabase: isSupabaseConfigured(),
         supportedCountries: Object.keys(COUNTRY_COMPETITIONS).sort(),
       });
-      return;
+      return true;
     }
 
     if (requestUrl.pathname === "/api/pools" && request.method === "POST") {
       const body = await readRequestBody(request);
       json(response, 201, await createPoolRecord(body));
-      return;
+      return true;
     }
 
     const poolMatch = requestUrl.pathname.match(/^\/api\/pools\/([^/]+)$/);
@@ -696,7 +687,7 @@ const server = createServer(async (request, response) => {
         200,
         await fetchPoolBundle(decodeURIComponent(poolMatch[1]), requestUrl.searchParams.get("admin") || ""),
       );
-      return;
+      return true;
     }
 
     if (poolMatch && request.method === "PATCH") {
@@ -706,14 +697,14 @@ const server = createServer(async (request, response) => {
         200,
         await updatePoolRecord(decodeURIComponent(poolMatch[1]), requestUrl.searchParams.get("admin") || "", body),
       );
-      return;
+      return true;
     }
 
     const participantCollectionMatch = requestUrl.pathname.match(/^\/api\/pools\/([^/]+)\/participants$/);
     if (participantCollectionMatch && request.method === "POST") {
       const body = await readRequestBody(request);
       json(response, 201, await addParticipantRecord(decodeURIComponent(participantCollectionMatch[1]), body));
-      return;
+      return true;
     }
 
     const participantMatch = requestUrl.pathname.match(/^\/api\/pools\/([^/]+)\/participants\/([^/]+)$/);
@@ -729,7 +720,7 @@ const server = createServer(async (request, response) => {
           body,
         ),
       );
-      return;
+      return true;
     }
 
     if (participantMatch && request.method === "DELETE") {
@@ -742,19 +733,46 @@ const server = createServer(async (request, response) => {
           requestUrl.searchParams.get("admin") || "",
         ),
       );
-      return;
+      return true;
     }
 
     if (requestUrl.pathname === "/api/matches") {
       await getMatches(requestUrl, response);
-      return;
+      return true;
     }
 
     const matchDetail = requestUrl.pathname.match(/^\/api\/matches\/([^/]+)$/);
     if (matchDetail) {
       await getMatchDetail(matchDetail[1], response);
-      return;
+      return true;
     }
+
+    return false;
+  } catch (error) {
+    json(response, error.statusCode || 500, {
+      code: error.code || "SERVER_ERROR",
+      message: error.message || "Erro inesperado.",
+      details: error.details,
+    });
+    return true;
+  }
+}
+
+async function startLocalServer() {
+  const { createServer: createViteServer } = isProduction ? { createServer: null } : await import("vite");
+  const vite = isProduction
+    ? null
+    : await createViteServer({
+        root,
+        appType: "spa",
+        server: { middlewareMode: true },
+      });
+
+  const server = createServer(async (request, response) => {
+    const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    const apiHandled = await handleApiRequest(request, response);
+
+    if (apiHandled) return;
 
     if (vite) {
       vite.middlewares(request, response);
@@ -762,15 +780,18 @@ const server = createServer(async (request, response) => {
     }
 
     serveProductionAsset(requestUrl, response);
-  } catch (error) {
-    json(response, error.statusCode || 500, {
-      code: error.code || "SERVER_ERROR",
-      message: error.message || "Erro inesperado.",
-      details: error.details,
-    });
-  }
-});
+  });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Bolao Facil em http://127.0.0.1:${port}/`);
-});
+  server.listen(port, "127.0.0.1", () => {
+    console.log(`Bolao Facil em http://127.0.0.1:${port}/`);
+  });
+}
+
+const isCliEntrypoint = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isCliEntrypoint) {
+  startLocalServer().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
