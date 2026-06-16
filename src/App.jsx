@@ -233,7 +233,6 @@ function App() {
   const now = useNow();
   const lastSavedLiveSignatureRef = useRef("");
   const [poolCode, setPoolCode] = useState("");
-  const [entryCode, setEntryCode] = useState("");
   const [adminToken, setAdminToken] = useState("");
   const [isCoordinator, setIsCoordinator] = useState(false);
   const [poolLoading, setPoolLoading] = useState(false);
@@ -320,9 +319,7 @@ function App() {
   const participantLink = poolCode ? makePoolLink(poolCode) : "";
   const coordinatorLink = poolCode && adminToken ? makePoolLink(poolCode, adminToken) : "";
 
-  function resetPoolState(options = {}) {
-    const hasEntryCode = Object.hasOwn(options, "entryCode");
-
+  function resetPoolState() {
     setPoolCode("");
     setAdminToken("");
     setIsCoordinator(false);
@@ -348,8 +345,6 @@ function App() {
     setMatchesNotice("");
     setMatchSource("");
     lastSavedLiveSignatureRef.current = "";
-
-    if (hasEntryCode) setEntryCode(options.entryCode);
   }
 
   function applyPoolBundle(bundle, token = "", options = {}) {
@@ -393,7 +388,7 @@ function App() {
     const shouldClearOnError = Boolean(options.clearOnError || shouldClearBeforeLoad);
 
     if (shouldClearBeforeLoad) {
-      resetPoolState({ entryCode: normalizedCode });
+      resetPoolState();
     }
 
     setPoolLoading(true);
@@ -404,13 +399,12 @@ function App() {
       const accessToken = token || "";
       const bundle = await fetchSharedPool(normalizedCode, accessToken);
       applyPoolBundle(bundle, accessToken);
-      setEntryCode(normalizedCode);
 
       const nextUrl = makePoolLink(normalizedCode, bundle.isCoordinator ? accessToken : "");
       window.history.replaceState(null, "", nextUrl);
     } catch (error) {
       if (shouldClearOnError) {
-        resetPoolState({ entryCode: normalizedCode });
+        resetPoolState();
       }
       setPoolError(error.message);
     } finally {
@@ -436,11 +430,6 @@ function App() {
       setPoolLoading(false);
       setInitialPoolChecked(true);
     }
-  }
-
-  function joinPool(event) {
-    event.preventDefault();
-    loadPool(entryCode, "", { clearOnError: true });
   }
 
   function leavePool() {
@@ -889,21 +878,6 @@ function App() {
             </button>
           </div>
 
-          <form className="panel entry-panel" onSubmit={joinPool}>
-            <p className="eyebrow">Entrar</p>
-            <h2>Entrar com código</h2>
-            <label>
-              Código do bolão
-              <input
-                value={entryCode}
-                onChange={(event) => setEntryCode(event.target.value)}
-                placeholder="BOLAO-8K4P"
-              />
-            </label>
-            <button className="secondary-action" type="submit" disabled={poolLoading || !entryCode.trim()}>
-              Entrar no bolão
-            </button>
-          </form>
         </section>
 
         {poolError && <div className="notice error entry-notice">{poolError}</div>}
