@@ -229,6 +229,50 @@ function LegalModal({ onClose }) {
   );
 }
 
+function ScoreParticipantsModal({ item, onClose }) {
+  if (!item) return null;
+
+  const participantCountLabel = `${item.count} palpite${item.count === 1 ? "" : "s"}`;
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="score-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="score-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="terms-header">
+          <div>
+            <p className="eyebrow">Placar escolhido</p>
+            <h2 id="score-dialog-title">{item.score}</h2>
+            <p className="score-dialog-summary">{participantCountLabel} nesse resultado.</p>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Fechar lista de participantes">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="score-participants-list" aria-label={`Participantes com palpite ${item.score}`}>
+          {item.participants.map((name, index) => (
+            <div className="score-participant-row" key={`${item.score}-${name}-${index}`}>
+              <span>{index + 1}</span>
+              <strong>{name}</strong>
+            </div>
+          ))}
+        </div>
+
+        <footer className="terms-actions">
+          <button className="primary-action" type="button" onClick={onClose}>
+            Fechar
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const now = useNow();
   const lastSavedLiveSignatureRef = useRef("");
@@ -266,6 +310,7 @@ function App() {
   const [liveError, setLiveError] = useState("");
   const [tracking, setTracking] = useState(false);
   const [legalOpen, setLegalOpen] = useState(false);
+  const [selectedHistogramScore, setSelectedHistogramScore] = useState("");
 
   const selectedMatch = useMemo(
     () => selectedMatchData || matches.find((match) => match.id === selectedMatchId) || null,
@@ -278,19 +323,31 @@ function App() {
   );
 
   const histogram = useMemo(() => {
-    const counts = participants.reduce((accumulator, participant) => {
+    const grouped = participants.reduce((accumulator, participant) => {
       const key = scoreKey(participant.homeGoals, participant.awayGoals);
-      accumulator[key] = (accumulator[key] || 0) + 1;
+      if (!accumulator[key]) {
+        accumulator[key] = { score: key, count: 0, participants: [] };
+      }
+
+      accumulator[key].count += 1;
+      accumulator[key].participants.push(participant.name || "Participante sem nome");
       return accumulator;
     }, {});
 
-    return Object.entries(counts)
-      .map(([score, count]) => ({ score, count }))
+    return Object.values(grouped)
+      .map((item) => ({
+        ...item,
+        participants: item.participants.sort((a, b) => a.localeCompare(b, "pt-BR")),
+      }))
       .sort((a, b) => b.count - a.count || a.score.localeCompare(b.score));
   }, [participants]);
 
   const totalPool = useMemo(() => Number(betValue || 0) * participants.length, [betValue, participants.length]);
   const maxHistogramCount = Math.max(...histogram.map((item) => item.count), 1);
+  const selectedHistogramItem = useMemo(
+    () => histogram.find((item) => item.score === selectedHistogramScore) || null,
+    [histogram, selectedHistogramScore],
+  );
   const currentLive = liveMatch || selectedMatch || {
     homeGoals: 0,
     awayGoals: 0,
@@ -344,6 +401,7 @@ function App() {
     setMatchesError("");
     setMatchesNotice("");
     setMatchSource("");
+    setSelectedHistogramScore("");
     lastSavedLiveSignatureRef.current = "";
   }
 
@@ -455,6 +513,12 @@ function App() {
 
     await copyShareLink(text, "participante");
   }
+
+  useEffect(() => {
+    if (selectedHistogramScore && !selectedHistogramItem) {
+      setSelectedHistogramScore("");
+    }
+  }, [selectedHistogramItem, selectedHistogramScore]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1323,18 +1387,43 @@ function App() {
             <BarChart3 size={22} />
           </div>
 
+          {!isCoordinator && histogram.length > 0 && (
+            <p className="histogram-hint">Clique em um placar para ver quem escolheu esse resultado.</p>
+          )}
+
           <div className="histogram-wrap">
             <div className="histogram-table">
               <div className="table-head">
                 <span>Placar</span>
                 <span>Palpites</span>
               </div>
-              {histogram.map((item) => (
-                <div className="histogram-row" key={item.score}>
-                  <span>{item.score}</span>
-                  <strong>{item.count}</strong>
-                </div>
-              ))}
+              {histogram.map((item) => {
+                const rowContent = (
+                  <>
+                    <span>{item.score}</span>
+                    <strong className="histogram-count">
+                      {item.count}
+                      {!isCoordinator && <small>Ver nomes</small>}
+                    </strong>
+                  </>
+                );
+
+                return isCoordinator ? (
+                  <div className="histogram-row" key={item.score}>
+                    {rowContent}
+                  </div>
+                ) : (
+                  <button
+                    className="histogram-row histogram-button"
+                    type="button"
+                    key={item.score}
+                    onClick={() => setSelectedHistogramScore(item.score)}
+                    aria-label={`Ver participantes com palpite ${item.score}`}
+                  >
+                    {rowContent}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="bars" aria-label="Histograma de placares">
@@ -1425,6 +1514,9 @@ function App() {
       </div>
       <LegalFooter onOpen={() => setLegalOpen(true)} />
       {legalOpen && <LegalModal onClose={() => setLegalOpen(false)} />}
+      {!isCoordinator && selectedHistogramItem && (
+        <ScoreParticipantsModal item={selectedHistogramItem} onClose={() => setSelectedHistogramScore("")} />
+      )}
     </main>
   );
 }

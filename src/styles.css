@@ -718,6 +718,13 @@ button:focus-visible {
   gap: 14px;
 }
 
+.histogram-hint {
+  margin: -4px 0 12px;
+  color: #5c6d60;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .histogram-table .table-head,
 .histogram-row {
   grid-template-columns: 1fr auto;
@@ -726,6 +733,33 @@ button:focus-visible {
 .histogram-row {
   padding: 10px 12px;
   border-top: 1px solid #e8eee4;
+}
+
+.histogram-button {
+  width: 100%;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  color: #152018;
+  text-align: left;
+  background: #ffffff;
+}
+
+.histogram-button:hover {
+  background: #f4f8ef;
+}
+
+.histogram-count {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+}
+
+.histogram-count small {
+  color: #0e6f49;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .bars {
@@ -874,6 +908,16 @@ button:focus-visible {
   box-shadow: 0 28px 80px rgba(14, 28, 20, 0.28);
 }
 
+.score-dialog {
+  width: min(440px, 100%);
+  max-height: min(82vh, 620px);
+  overflow: hidden;
+  border: 1px solid #cad7c8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(14, 28, 20, 0.28);
+}
+
 .terms-header {
   position: sticky;
   top: 0;
@@ -889,6 +933,48 @@ button:focus-visible {
 
 .terms-header h2 {
   font-size: 1.25rem;
+}
+
+.score-dialog-summary {
+  margin: 4px 0 0;
+  color: #5f6f63;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.score-participants-list {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+  padding: 18px 20px;
+}
+
+.score-participant-row {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e1e8de;
+  border-radius: 8px;
+  background: #fbfcf8;
+}
+
+.score-participant-row span {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #0e7a4f;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.score-participant-row strong {
+  overflow-wrap: anywhere;
 }
 
 .terms-body {
@@ -1048,14 +1134,20 @@ button:focus-visible {
     padding: 10px;
   }
 
-  .terms-dialog {
+  .terms-dialog,
+  .score-dialog {
     max-height: 90vh;
   }
 
   .terms-header,
   .terms-body,
+  .score-participants-list,
   .terms-actions {
     padding-inline: 14px;
+  }
+
+  .score-participants-list {
+    max-height: 48vh;
   }
 
   .terms-header {
